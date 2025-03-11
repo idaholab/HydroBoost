@@ -75,6 +75,11 @@ df["Battery Cost"] = df["Grid to Battery (MW)"] * - df["LMP"]
 df["Total Battery Revenue"] = df["Battery Revenue"] + df["Battery Cost"]
 df["Hydro and Battery Revenue"] = df["Hydro Revenue"] + df["Total Battery Revenue"]
 
+df["Regulation Up Revenue"] = df["Reserve Regulation Up Market Sell (MW)"] * df["Reg Up Price"]
+df["Regulation Down Revenue"] = df["Reserve Regulation Down Market Sell (MW)"] * df["Reg Dn Price"]
+df["Spinning Reserve Revenue"] = df["Reserve Spinning Market Sell (MW)"] * df["Spin Price"]
+
+
 
 # Define the revenue columns we want to plot
 revenue_columns = ["Hydro Revenue", "Battery Revenue", "Battery Cost", 
