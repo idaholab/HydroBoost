@@ -94,12 +94,23 @@ colors = {
     "Hydro and Battery Revenue": "#FB8C00"  # Orange
 }
 
-# Create a figure
-fig = go.Figure()
+
+###########################################
+# Line plot
+###########################################
+
+print(df.columns)
+
+fig = px.line(df.drop(columns=["unit_id", "UnitGroup", "Unit_Category", "Unit_Type"]))
+fig.write_html(f"Simulation_Results/{project}/Figures/All_data.html")
+
 
 ###########################################
 # Overview of all the monthly revenue
 ###########################################
+
+# Create a figure
+fig = go.Figure()
 
 monthly_data = df[revenue_columns].resample('M').sum()
 
