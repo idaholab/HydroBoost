@@ -1,6 +1,10 @@
-# HydroBoost <img src="https://dmztheme19.inl.gov/Branding%20Assets/Images/INL%20Logo%20Blue.png" alt="INL Logo" height="100">
-<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Argonnelablogo.PNG/1200px-Argonnelablogo.PNG" alt="ANL Logo" height="100">
-HydroBoost is an optimization solver for hydro power and battery storage systems. Its primary objective is to optimize revenue based on hourly dispatch of the hydro and battery assets with forecast energy market prices. It can be applied to both run-of-river and reservoir storage sites.
+<p>
+<img src="https://bloximages.newyork1.vip.townnews.com/kpvi.com/content/tncms/assets/v3/editorial/9/92/992621ab-bea1-56c7-8b6c-307d6e45ae7a/5661a6de4e084.image.jpg" alt="INL Logo" height="60">
+<img src="https://analytik.co.uk/wp-content/uploads/2023/05/argonne-national-laboratory-logo.png" alt="ANL Logo" height="60">
+</p>
+
+<h1>HydroBoost</h1>
+HydroBoost is a joint Idaho National Lab (INL) and Argonne National Lab (ANL) developed optimization solver for hydro power and battery storage systems. Its primary objective is to optimize revenue based on hourly dispatch of the hydro and battery assets with forecast energy market prices. It can be applied to both run-of-river and reservoir storage sites.
 
 
 ## Initial Setup to run HydroBoost
