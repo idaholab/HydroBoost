@@ -1,4 +1,4 @@
-# HydroBoost
+# HydroBoost <img src="https://dmztheme19.inl.gov/Branding%20Assets/Images/INL%20Logo%20Blue.png" alt="INL Logo" height="200">
 ![Logo](https://dmztheme19.inl.gov/Branding%20Assets/Images/INL%20Logo%20Blue.png)
 HydroBoost is an optimization solver for hydro power and battery storage systems. Its primary objective is to optimize revenue based on hourly dispatch of the hydro and battery assets with forecast energy market prices. It can be applied to both run-of-river and reservoir storage sites.
 
