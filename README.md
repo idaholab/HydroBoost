@@ -1,6 +1,6 @@
 <p>
-<img src="https://bloximages.newyork1.vip.townnews.com/kpvi.com/content/tncms/assets/v3/editorial/9/92/992621ab-bea1-56c7-8b6c-307d6e45ae7a/5661a6de4e084.image.jpg" alt="INL Logo" height="75">
-<img src="https://analytik.co.uk/wp-content/uploads/2023/05/argonne-national-laboratory-logo.png" alt="ANL Logo" height="75">
+<img src="https://bloximages.newyork1.vip.townnews.com/kpvi.com/content/tncms/assets/v3/editorial/9/92/992621ab-bea1-56c7-8b6c-307d6e45ae7a/5661a6de4e084.image.jpg" alt="INL Logo" height="120">
+<img src="https://analytik.co.uk/wp-content/uploads/2023/05/argonne-national-laboratory-logo.png" alt="ANL Logo" height="120">
 </p>
 
 <h1>HydroBoost</h1>
