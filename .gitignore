@@ -15,3 +15,13 @@ dist/
 *.egg-info/
 
 *.log
+*.html
+/Simulation_Results/
+/hydroboost/
+/Core_Models/HydroBoost/generated_data/
+/Input_Spreadsheets/
+
+# These folders should be included in the repo as an example
+!/Simulation_Results/Project_1/
+!/Core_Models/HydroBoost/generated_data/Project_1/
+!/Input_Spreadsheets/Project_1.xlsx
