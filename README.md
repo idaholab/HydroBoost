@@ -45,7 +45,7 @@ pip install -r requirements.txt
 
 Now you can generate the forecasting price data needed for the optimization. This is done with the command line using 
 ```
-python Generate_forecast_price_data.py --project="project_name"
+python Generate_forecast_price_data.py
 ```
 The forecast data will be generated and the results will be located in the Core_Models/HydroBoost/generated_data/ directory. The HydroBoost Julia optimization solver will use these files.
 
@@ -78,4 +78,3 @@ The results will be save in the Simulation_Results directory.
 This is not necessary but serves as a convenience to generate many interactive plots to view the results data. 
 
 You will need to activate the virtual environment again as in step 2 and run the Generate_results_figures.py file. Again, ensure that the project_name is set to the correct name. The figures will be added to the Simulation_Results directory.
-
