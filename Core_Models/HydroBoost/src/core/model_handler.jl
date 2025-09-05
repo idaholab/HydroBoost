@@ -1,10 +1,14 @@
 #=
+
 HydroBoost Model
 
-Current version: 1.0
-Last update: 09.18.2024
-
+Main Authors:
 Jonghwan Kwon; Argonne National Laboratory; kwonj@anl.gov
+Carlos Josue Lopez; Argonne National Laboratory; clopezsalgado@anl.gov
+Alberto Grimaldi; Argonne National Laboratory; agrimaldi@anl.gov
+
+Current version: 2.0
+Last update: 07.31.2025
 
 =#
 

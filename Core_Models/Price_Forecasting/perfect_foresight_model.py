@@ -1,106 +1,95 @@
-# Copyright 2025, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
+#
+
+# HydroBoost Model
+
+# Main Authors:
+# Jonghwan Kwon; Argonne National Laboratory; kwonj@anl.gov
+# Carlos Josue Lopez; Argonne National Laboratory; clopezsalgado@anl.gov
+# Alberto Grimaldi; Argonne National Laboratory; agrimaldi@anl.gov
+
+# Current version: 2.0
+# Last update: 07.31.2025
+
+#
 
 import os
 import pandas as pd
 import numpy as np
 from datetime import timedelta
-
-from Core_Models.Price_Forecasting.helper_functions import generate_path
+from helper_functions import generate_path
 
 
 def initialize_empty_dataframe_for_forecast(df):
     """
-    Initialize an empty dataframe for the 7-day forecast. Index of dates and columns are hours.
+    Initialize an empty DataFrame for a 7-day forecast.
+    Rows = forecast start dates, Columns = hours 0..167.
     """
-    # Need values for the dataframe index(forecast hours) and columns (dates)
-    dates = list(set(df.index.date))
-    dates = pd.to_datetime(dates)
-    dates = dates.sort_values()
-
-    hours = [i for i in range(0, 7*24)]
-
-    x = pd.DataFrame(index=dates, columns=hours)
-
-    return x
+    dates = sorted(pd.to_datetime(list({d.date() for d in df.index})))
+    hours = list(range(7 * 24))
+    return pd.DataFrame(index=dates, columns=hours)
 
 
 def create_perfect_foresight_forecast(price_df, file_name):
     """
-    Creates a dict with the following: ['DA-LMP', 'Regulation Up', 'Regulation Down', 'Spinning Reserve']
-    Input: dataframe constructed using read_ALEAF_input_spreadsheet function.
-    Note: Writing to Excel file is slow.
+    Generates perfect-foresight 7-day forecasts for:
+      - 'DA-LMP'
+      - 'Regulation Up'
+      - 'Regulation Down'
+      - 'Spinning Reserve'
+
+    Saves CSVs under:
+      .../generated_data/{file_name}/Market/Perfect_foresight/
+
+    Returns a dict of the forecast DataFrames.
     """
-
-    print("Started perfect foresight model.")
-
-    # Get the dataframe of Data from the input_data dict
     df = price_df.copy()
 
-    def get_forecast(forecast, price_column):
-        """
-        Helper function to run each price: LMP, Reg up/down, Spinning reserve
-        """
+    def get_forecast(template, col):
+        # template: DataFrame rows=dates, cols=hours
+        for date in template.index:
+            # extract actual values for 7*24h from df
+            arr = df.loc[date: date + timedelta(days=7) - timedelta(hours=1), col].to_numpy()
+            if arr.size < 168:
+                # duplicate last day until length 168
+                last_day = arr[-24:]
+                arr = np.concatenate([arr, np.tile(last_day, (168 - arr.size + 23) // 24)])[:168]
+            template.loc[date] = arr
+        return template.T
 
-        for date in forecast.index:
+    # build forecasts
+    empty = initialize_empty_dataframe_for_forecast(df)
+    LMP_fc = get_forecast(empty.copy(), "DA-LMP")
+    RU_fc  = get_forecast(empty.copy(), "Regulation Up")
+    RD_fc  = get_forecast(empty.copy(), "Regulation Down")
+    SR_fc  = get_forecast(empty.copy(), "Spinning Reserve")
 
-            # Start with an empty array
-            x = np.empty(7*24)
+    # convert index to string dates
+    for fc in (LMP_fc, RU_fc, RD_fc, SR_fc):
+        fc.index = fc.index.astype(str)
 
-            # Find what the actual values are and add them to empty array
-            temp = df.loc[date:date + timedelta(days=7) - timedelta(hours=1), price_column].to_numpy()  
+    # ensure output folder exists
+    out_dir = generate_path([file_name, "Market", "Perfect_foresight"])
 
-            # The last week doesn't have a week of future data, so we will duplicate the last day
-            if len(temp) < 168:
-                # Get the last day of values and duplicate it
-                vals = temp[-24:]
-                vals = np.tile(vals, 5)
-    
-                # Append them and take the number of values needed
-                temp = np.append(temp, vals)
-                temp = temp[0: 168]
+    # save CSVs
+    LMP_fc.to_csv(os.path.join(out_dir, "DA_LMP.csv"))
+    RU_fc.to_csv(os.path.join(out_dir, "Regulation_up.csv"))
+    RD_fc.to_csv(os.path.join(out_dir, "Regulation_down.csv"))
+    SR_fc.to_csv(os.path.join(out_dir, "Spin.csv"))
 
-            x[:len(temp)] = temp      
-            
-            forecast.loc[date] = x
+    print(f"→ Perfect-foresight files saved to: {out_dir}")
 
-        return forecast
-    
-    # Initialize an empty dataframe for the forecast
-    empty_forecast = initialize_empty_dataframe_for_forecast(df)
+    return {
+        "DA-LMP": LMP_fc,
+        "Regulation Up": RU_fc,
+        "Regulation Down": RD_fc,
+        "Spinning Reserve": SR_fc,
+    }
 
-    # Get all the forecast using helper function 
-    LMP_forecast = get_forecast(empty_forecast.copy(), "DA-LMP")
-    Reg_up_forecast = get_forecast(empty_forecast.copy(), "Regulation Up")
-    Reg_down_forecast = get_forecast(empty_forecast.copy(), "Regulation Down")
-    Spin_forecast = get_forecast(empty_forecast.copy(), "Spinning Reserve")
-
-    # Lets drop the timestamp from the column names M-d-Y H:mm:ss --> M-d-Y 
-    dates_to_string = LMP_forecast.index.astype(str)
-
-    # Want the index as strings not datetimes
-    LMP_forecast.index = dates_to_string
-    Reg_up_forecast.index = dates_to_string
-    Reg_down_forecast.index = dates_to_string
-    Spin_forecast.index = dates_to_string
-
-    # HydroBoost optimization solver is set with date columns and hour index, so we will transpose
-    LMP_forecast = LMP_forecast.T
-    Reg_up_forecast = Reg_up_forecast.T
-    Reg_down_forecast = Reg_down_forecast.T
-    Spin_forecast = Spin_forecast.T
-
-    # Now we will save the perfect foresight DA-LMP, Reg_up, Reg_down, Spin
-    # Make sure the directory structure is there
-    generate_path(["generated_data", file_name, "Market", "Perfect_foresight"])
-    LMP_forecast.to_csv(f"Core_Models/HydroBoost/generated_data/{file_name}/Market/Perfect_foresight/DA_LMP.csv")
-    Reg_up_forecast.to_csv(f"Core_Models/HydroBoost/generated_data/{file_name}/Market/Perfect_foresight/Regulation_up.csv")
-    Reg_down_forecast.to_csv(f"Core_Models/HydroBoost/generated_data/{file_name}/Market/Perfect_foresight/Regulation_down.csv")
-    Spin_forecast.to_csv(f"Core_Models/HydroBoost/generated_data/{file_name}/Market/Perfect_foresight/Spin.csv")
-
-    print("Finished perfect foresight model.\n")
-
-    # Return the results as a dict
-    return {"DA-LMP": LMP_forecast, 
-            "Regulation Up": Reg_up_forecast, 
-            "Regulation Down": Reg_down_forecast,
-            "Spinning Reserve": Spin_forecast}
+if __name__ == "__main__":
+    # project = "Model_A"
+    # project = "Model_B"
+    project = "Model_C"
+    # project = "Model_D"
+    from import_data import read_price_and_forecasting
+    price_df, _ = read_price_and_forecasting(project)
+    create_perfect_foresight_forecast(price_df, project)

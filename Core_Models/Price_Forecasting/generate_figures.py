@@ -1,36 +1,21 @@
-# Copyright 2025, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
+#
+
+# HydroBoost Model
+
+# Main Authors:
+# Jonghwan Kwon; Argonne National Laboratory; kwonj@anl.gov
+# Carlos Josue Lopez; Argonne National Laboratory; clopezsalgado@anl.gov
+# Alberto Grimaldi; Argonne National Laboratory; agrimaldi@anl.gov
+
+# Current version: 2.0
+# Last update: 07.31.2025
+
+#
 
 import os
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-
-
-def input_data_plot(df):
-
-    fig = px.line(df)
-
-    fig.update_layout(title=dict(text="Input Data from Spreadsheet", xanchor="center", x=.5, font=dict(size=20)),
-                      margin=dict(t=80),
-                      legend=dict(title="Data",
-                                  font=dict(size=12),
-                                  xanchor='right',
-                                  x=.99,
-                                  yanchor='top',
-                                  y=.99,
-                                  bgcolor='rgba(255, 255, 255, 0.4)',
-                                  borderwidth=1,
-                                  ),
-                        modebar=dict(bgcolor='rgba(255, 255, 255, 0.3)'),
-                        font=dict(size=14),
-                        )
-    
-    # If no regressors are give all values are price
-    if len(df.columns) == 4:
-        fig.update_yaxes(title="Price ($)")
-
-    return fig
-
 
 def plot_forecast_model_errors(file_name,
                                perfect_foresight_forecast_dict,
@@ -85,19 +70,16 @@ def plot_forecast_model_errors(file_name,
         
     # Update layout for better appearance
     fig.update_layout(
-        title=dict(text="Comparison of Forecasting Errors (model-actual)", x=.5, xanchor='center', font=dict(size=25)),
-        # height=int((len(error)+1)/2)*400,
-        # width=1200
+        title=dict(text="Comparison of Forecasting (model-actual)", x=.5, xanchor='center', font=dict(size=25)),
+        height=int((len(error)+1)/2)*400,
+        width=1200
     )
 
     # Save and show the results. First make sure there is a directory to save in
-    figure_directory = os.path.join(os.getcwd(), f"Core_Models/HydroBoost/generated_data/{file_name}/Figures")
+    figure_directory = os.path.join(os.getcwd(), f"src/Private_HydroBoost-main/generated_data/{file_name}/Figures")
     if os.path.exists(figure_directory) == False:
         os.mkdir(figure_directory)
+        print(figure_directory)
     fig.write_html(f"{figure_directory}/Forecast_error.html")
 
-    print("Generated error figure.")
-
     return fig
-
-
