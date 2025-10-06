@@ -285,6 +285,61 @@ def get_om_cost_tech_ids(filepath: str) -> Set[str]:
         sys.exit(1)
 
 
+def get_rough_zone_settings(filepath: str) -> Tuple[bool, int, int]:
+    """
+    Extract rough zone settings from Simulation Setting sheet.
+    
+    Args:
+        filepath (str): Path to Excel file
+        
+    Returns:
+        Tuple[bool, int, int]: (rough_zone_flag, rough_zone_segment_number, num_segments)
+    """
+    try:
+        wb = load_workbook(filepath, read_only=True, data_only=True)
+        
+        if "Simulation Setting" not in wb.sheetnames:
+            wb.close()
+            return False, 0, 0
+        
+        ws = wb["Simulation Setting"]
+        
+        rough_zone_flag = False
+        rough_zone_segment_number = 0
+        num_segments = 2  # Default value
+        
+        # Read settings from the sheet (Setting column A, Value column B)
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if row[0]:
+                setting_name = str(row[0]).strip()
+                setting_value = row[1]
+                
+                if setting_name == "hydropower_rough_zone_flag":
+                    if setting_value is not None:
+                        rough_zone_flag = str(setting_value).lower() in ['true', '1', 'yes']
+                
+                elif setting_name == "hydropower_rough_zone_segment_number_value":
+                    if setting_value is not None:
+                        try:
+                            rough_zone_segment_number = int(setting_value)
+                        except (ValueError, TypeError):
+                            rough_zone_segment_number = 0
+                
+                elif setting_name == "num_hydropower_performance_segment_value":
+                    if setting_value is not None:
+                        try:
+                            num_segments = int(setting_value)
+                        except (ValueError, TypeError):
+                            num_segments = 2
+        
+        wb.close()
+        return rough_zone_flag, rough_zone_segment_number, num_segments
+        
+    except Exception as e:
+        print(f"Error reading rough zone settings: {str(e)}")
+        return False, 0, 2
+
+
 def get_om_cost_rates_per_tech_id(filepath: str) -> Dict[str, Dict[str, float]]:
     """
     Extract O&M cost rates for each Tech_ID from O&M Cost sheet.
@@ -464,6 +519,61 @@ def calculate_hydro_generator_startup_shutdown_events(dispatch_data: pd.DataFram
     return result_data
 
 
+def detect_rough_zone_operation(dispatch_data: pd.DataFrame, rough_zone_segment_num: int, num_segments: int) -> pd.DataFrame:
+    """
+    Detect if each timestep is operating in the rough zone.
+    
+    Operating in rough zone IF:
+    - Water flow exists in rough zone segment (q_G{N}_jht > threshold)
+    - AND no water flow in next segment (q_G{N+1}_jht == 0 or doesn't exist)
+    
+    Args:
+        dispatch_data (pd.DataFrame): Hydro dispatch data
+        rough_zone_segment_num (int): Segment number identified as rough zone
+        num_segments (int): Total number of performance segments
+        
+    Returns:
+        pd.DataFrame: Data with 'in_rough_zone' column added
+    """
+    result_data = dispatch_data.copy()
+    
+    # Initialize rough zone flag column
+    result_data['in_rough_zone'] = False
+    
+    # Check if the required columns exist
+    rough_zone_col = f'q_G{rough_zone_segment_num}_jht'
+    
+    if rough_zone_col not in result_data.columns:
+        print(f"  Warning: Column '{rough_zone_col}' not found in dispatch data. Skipping rough zone detection.")
+        return result_data
+    
+    # Determine if there's a next segment to check
+    has_next_segment = rough_zone_segment_num < num_segments
+    next_segment_col = f'q_G{rough_zone_segment_num + 1}_jht' if has_next_segment else None
+    
+    # Threshold for considering water flow as non-zero (handle floating point)
+    threshold = 1e-6
+    
+    # Group by unit_id to handle multiple hydro units
+    for unit_id in dispatch_data['unit_id'].unique():
+        unit_mask = dispatch_data['unit_id'] == unit_id
+        
+        # Check if operating in rough zone segment
+        in_rough_segment = result_data.loc[unit_mask, rough_zone_col] > threshold
+        
+        # Check if NOT operating beyond rough zone
+        if has_next_segment and next_segment_col in result_data.columns:
+            not_beyond_rough = result_data.loc[unit_mask, next_segment_col] <= threshold
+        else:
+            # If there's no next segment, we can't be beyond it
+            not_beyond_rough = True
+        
+        # In rough zone = in rough segment AND not beyond it
+        result_data.loc[unit_mask, 'in_rough_zone'] = in_rough_segment & not_beyond_rough
+    
+    return result_data
+
+
 def calculate_hydro_generator_ramping(dispatch_data: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate ramping up and down amounts for each time step.
@@ -511,13 +621,15 @@ def calculate_hydro_generator_ramping(dispatch_data: pd.DataFrame) -> pd.DataFra
     return result_data
 
 
-def calculate_hourly_om_costs(dispatch_data: pd.DataFrame, cost_rates: Dict[str, Dict[str, float]]) -> pd.DataFrame:
+def calculate_hourly_om_costs(dispatch_data: pd.DataFrame, cost_rates: Dict[str, Dict[str, float]], 
+                               rough_zone_flag: bool = False) -> pd.DataFrame:
     """
     Calculate hourly O&M costs for each time step based on Tech_ID-specific cost rates.
     
     Args:
         dispatch_data (pd.DataFrame): Hydro dispatch data with events and ramping
         cost_rates (Dict[str, Dict[str, float]]): O&M cost rates per Tech_ID
+        rough_zone_flag (bool): Whether to include rough zone costs
         
     Returns:
         pd.DataFrame: Data with hourly O&M costs
@@ -529,6 +641,7 @@ def calculate_hourly_om_costs(dispatch_data: pd.DataFrame, cost_rates: Dict[str,
     result_data['shutdown_cost_$'] = 0.0
     result_data['ramp_up_cost_$'] = 0.0
     result_data['ramp_down_cost_$'] = 0.0
+    result_data['rough_zone_cost_$'] = 0.0
     result_data['total_hourly_om_cost_$'] = 0.0
     
     # Calculate costs for each row based on its Tech_ID
@@ -543,22 +656,31 @@ def calculate_hourly_om_costs(dispatch_data: pd.DataFrame, cost_rates: Dict[str,
             ramp_up_costs = result_data.loc[unit_mask, 'ramp_up_mw'] * unit_costs.get('ramp_up_cost', 0)
             ramp_down_costs = result_data.loc[unit_mask, 'ramp_down_mw'] * unit_costs.get('ramp_down_cost', 0)
             
+            # Calculate rough zone costs if enabled and column exists
+            rough_zone_costs = 0.0
+            if rough_zone_flag and 'in_rough_zone' in result_data.columns:
+                rough_zone_costs = result_data.loc[unit_mask, 'in_rough_zone'].astype(float) * unit_costs.get('rough_zone_cost', 0)
+            
             # Update cost columns
             result_data.loc[unit_mask, 'startup_cost_$'] = startup_costs
             result_data.loc[unit_mask, 'shutdown_cost_$'] = shutdown_costs
             result_data.loc[unit_mask, 'ramp_up_cost_$'] = ramp_up_costs
             result_data.loc[unit_mask, 'ramp_down_cost_$'] = ramp_down_costs
-            result_data.loc[unit_mask, 'total_hourly_om_cost_$'] = startup_costs + shutdown_costs + ramp_up_costs + ramp_down_costs
+            result_data.loc[unit_mask, 'rough_zone_cost_$'] = rough_zone_costs
+            result_data.loc[unit_mask, 'total_hourly_om_cost_$'] = (startup_costs + shutdown_costs + 
+                                                                      ramp_up_costs + ramp_down_costs + 
+                                                                      rough_zone_costs)
     
     return result_data
 
 
-def generate_per_hydro_generator_cost_summary(dispatch_data: pd.DataFrame) -> Dict[str, Dict[str, float]]:
+def generate_per_hydro_generator_cost_summary(dispatch_data: pd.DataFrame, rough_zone_flag: bool = False) -> Dict[str, Dict[str, float]]:
     """
     Generate per-unit O&M cost summary for each hydro generator.
     
     Args:
         dispatch_data (pd.DataFrame): Hydro dispatch data with calculated costs
+        rough_zone_flag (bool): Whether to include rough zone costs
         
     Returns:
         Dict[str, Dict[str, float]]: Per-unit summary of annual costs
@@ -583,6 +705,11 @@ def generate_per_hydro_generator_cost_summary(dispatch_data: pd.DataFrame) -> Di
             'ramp_down_cost_$': unit_data['ramp_down_cost_$'].sum(),
             'total_om_cost_$': unit_data['total_hourly_om_cost_$'].sum()
         }
+        
+        # Add rough zone data if enabled
+        if rough_zone_flag and 'in_rough_zone' in unit_data.columns:
+            per_unit_summary[unit_id]['rough_zone_hours'] = unit_data['in_rough_zone'].sum()
+            per_unit_summary[unit_id]['rough_zone_cost_$'] = unit_data['rough_zone_cost_$'].sum()
     
     return per_unit_summary
 
@@ -694,12 +821,13 @@ def calculate_hydro_pump_ramping(dispatch_data: pd.DataFrame) -> pd.DataFrame:
     return result_data
 
 
-def generate_per_hydro_pump_cost_summary(dispatch_data: pd.DataFrame) -> Dict[str, Dict[str, float]]:
+def generate_per_hydro_pump_cost_summary(dispatch_data: pd.DataFrame, rough_zone_flag: bool = False) -> Dict[str, Dict[str, float]]:
     """
     Generate per-pump O&M cost summary for each pump unit.
     
     Args:
         dispatch_data (pd.DataFrame): Hydro dispatch data with calculated costs
+        rough_zone_flag (bool): Whether to include rough zone costs
         
     Returns:
         Dict[str, Dict[str, float]]: Per-pump summary of annual costs
@@ -723,16 +851,22 @@ def generate_per_hydro_pump_cost_summary(dispatch_data: pd.DataFrame) -> Dict[st
             'ramp_down_cost_$': unit_data['ramp_down_cost_$'].sum(),
             'total_om_cost_$': unit_data['total_hourly_om_cost_$'].sum()
         }
+        
+        # Add rough zone data if enabled
+        if rough_zone_flag and 'in_rough_zone' in unit_data.columns:
+            per_pump_summary[unit_id]['rough_zone_hours'] = unit_data['in_rough_zone'].sum()
+            per_pump_summary[unit_id]['rough_zone_cost_$'] = unit_data['rough_zone_cost_$'].sum()
     
     return per_pump_summary
 
 
-def generate_om_cost_summary(dispatch_data: pd.DataFrame) -> Dict[str, float]:
+def generate_om_cost_summary(dispatch_data: pd.DataFrame, rough_zone_flag: bool = False) -> Dict[str, float]:
     """
     Generate annual O&M cost summary.
     
     Args:
         dispatch_data (pd.DataFrame): Hydro dispatch data with calculated costs
+        rough_zone_flag (bool): Whether to include rough zone costs
         
     Returns:
         Dict[str, float]: Summary of annual costs
@@ -748,6 +882,11 @@ def generate_om_cost_summary(dispatch_data: pd.DataFrame) -> Dict[str, float]:
         'annual_ramp_down_cost_$': dispatch_data['ramp_down_cost_$'].sum(),
         'total_annual_om_cost_$': dispatch_data['total_hourly_om_cost_$'].sum()
     }
+    
+    # Add rough zone data if enabled
+    if rough_zone_flag and 'in_rough_zone' in dispatch_data.columns:
+        summary['total_rough_zone_hours'] = dispatch_data['in_rough_zone'].sum()
+        summary['annual_rough_zone_cost_$'] = dispatch_data['rough_zone_cost_$'].sum()
     
     return summary
 
@@ -785,12 +924,16 @@ def display_om_cost_summary(summary: Dict[str, float], model_type: str):
     print(f"  Total Shutdown Events: {summary['total_shutdown_events']:.0f}")
     print(f"  Total Ramp Up (MW): {summary['total_ramp_up_mw']:.2f}")
     print(f"  Total Ramp Down (MW): {summary['total_ramp_down_mw']:.2f}")
+    if 'total_rough_zone_hours' in summary:
+        print(f"  Total Rough Zone Hours: {summary['total_rough_zone_hours']:.0f}")
     
     print(f"\nANNUAL COSTS:")
     print(f"  Startup Costs: ${summary['annual_startup_cost_$']:,.2f}")
     print(f"  Shutdown Costs: ${summary['annual_shutdown_cost_$']:,.2f}")
     print(f"  Ramp Up Costs: ${summary['annual_ramp_up_cost_$']:,.2f}")
     print(f"  Ramp Down Costs: ${summary['annual_ramp_down_cost_$']:,.2f}")
+    if 'annual_rough_zone_cost_$' in summary:
+        print(f"  Rough Zone Costs: ${summary['annual_rough_zone_cost_$']:,.2f}")
     print(f"  TOTAL ANNUAL O&M COST: ${summary['total_annual_om_cost_$']:,.2f}")
     
     print("="*70)
@@ -816,10 +959,14 @@ def display_per_hydro_generator_cost_summary(per_unit_summary: Dict[str, Dict[st
         print(f"  Shutdown Events: {unit_costs['shutdown_events']:.0f}")
         print(f"  Ramp Up (MW): {unit_costs['ramp_up_mw']:.2f}")
         print(f"  Ramp Down (MW): {unit_costs['ramp_down_mw']:.2f}")
+        if 'rough_zone_hours' in unit_costs:
+            print(f"  Rough Zone Hours: {unit_costs['rough_zone_hours']:.0f}")
         print(f"  Startup Costs: ${unit_costs['startup_cost_$']:,.2f}")
         print(f"  Shutdown Costs: ${unit_costs['shutdown_cost_$']:,.2f}")
         print(f"  Ramp Up Costs: ${unit_costs['ramp_up_cost_$']:,.2f}")
         print(f"  Ramp Down Costs: ${unit_costs['ramp_down_cost_$']:,.2f}")
+        if 'rough_zone_cost_$' in unit_costs:
+            print(f"  Rough Zone Costs: ${unit_costs['rough_zone_cost_$']:,.2f}")
         print(f"  UNIT TOTAL O&M COST: ${unit_costs['total_om_cost_$']:,.2f}")
     
     print("="*80)
@@ -845,16 +992,20 @@ def display_per_hydro_pump_cost_summary(per_pump_summary: Dict[str, Dict[str, fl
         print(f"  Shutdown Events: {unit_costs['shutdown_events']:.0f}")
         print(f"  Ramp Up (MW): {unit_costs['ramp_up_mw']:.2f}")
         print(f"  Ramp Down (MW): {unit_costs['ramp_down_mw']:.2f}")
+        if 'rough_zone_hours' in unit_costs:
+            print(f"  Rough Zone Hours: {unit_costs['rough_zone_hours']:.0f}")
         print(f"  Startup Costs: ${unit_costs['startup_cost_$']:,.2f}")
         print(f"  Shutdown Costs: ${unit_costs['shutdown_cost_$']:,.2f}")
         print(f"  Ramp Up Costs: ${unit_costs['ramp_up_cost_$']:,.2f}")
         print(f"  Ramp Down Costs: ${unit_costs['ramp_down_cost_$']:,.2f}")
+        if 'rough_zone_cost_$' in unit_costs:
+            print(f"  Rough Zone Costs: ${unit_costs['rough_zone_cost_$']:,.2f}")
         print(f"  PUMP TOTAL O&M COST: ${unit_costs['total_om_cost_$']:,.2f}")
     
     print("="*80)
 
 
-def create_om_cost_csv(dispatch_data: pd.DataFrame, output_filepath: str):
+def create_om_cost_csv(dispatch_data: pd.DataFrame, output_filepath: str, rough_zone_flag: bool = False):
     """
     Create a separate O&M cost CSV file with time series data.
     One row per timestep (day/hour), with detailed cost columns for each unit.
@@ -868,6 +1019,7 @@ def create_om_cost_csv(dispatch_data: pd.DataFrame, output_filepath: str):
     - shutdown_cost_$_{unit_id}
     - ramp_up_cost_$_{unit_id}
     - ramp_down_cost_$_{unit_id}
+    - rough_zone_cost_$_{unit_id} (if rough_zone_flag is True)
     - O&M_{unit_id}
     
     Plus O&M_Total (sum of all unit O&M costs).
@@ -875,6 +1027,7 @@ def create_om_cost_csv(dispatch_data: pd.DataFrame, output_filepath: str):
     Args:
         dispatch_data (pd.DataFrame): Dispatch data with calculated O&M costs
         output_filepath (str): Path where the O&M cost CSV will be saved
+        rough_zone_flag (bool): Whether to include rough zone cost columns
     """
     # Get unique timesteps
     timesteps = dispatch_data[['day', 'hour']].drop_duplicates().sort_values(['day', 'hour']).reset_index(drop=True)
@@ -895,9 +1048,15 @@ def create_om_cost_csv(dispatch_data: pd.DataFrame, output_filepath: str):
             f'startup_cost_$_{unit_id}': 'startup_cost_$',
             f'shutdown_cost_$_{unit_id}': 'shutdown_cost_$',
             f'ramp_up_cost_$_{unit_id}': 'ramp_up_cost_$',
-            f'ramp_down_cost_$_{unit_id}': 'ramp_down_cost_$',
-            f'O&M_{unit_id}': 'total_hourly_om_cost_$'
+            f'ramp_down_cost_$_{unit_id}': 'ramp_down_cost_$'
         }
+        
+        # Add rough zone cost column if enabled
+        if rough_zone_flag and 'rough_zone_cost_$' in unit_data.columns:
+            detail_columns[f'rough_zone_cost_$_{unit_id}'] = 'rough_zone_cost_$'
+        
+        # Always add O&M total for the unit
+        detail_columns[f'O&M_{unit_id}'] = 'total_hourly_om_cost_$'
         
         # Aggregate by day and hour
         for new_col_name, orig_col_name in detail_columns.items():
@@ -1060,6 +1219,17 @@ def main():
         print(f"{'='*70}\n")
         return
     
+    # Get rough zone settings
+    print("\nChecking rough zone settings...")
+    rough_zone_flag, rough_zone_segment_num, num_segments = get_rough_zone_settings(filepath)
+    
+    if rough_zone_flag:
+        print(f"  Rough zone operation enabled")
+        print(f"  Rough zone segment: {rough_zone_segment_num}")
+        print(f"  Total segments: {num_segments}")
+    else:
+        print(f"  Rough zone operation disabled")
+    
     # Import and process dispatch data
     print(f"\nProcessing dispatch data from: {dispatch_filepath}")
     try:
@@ -1074,9 +1244,16 @@ def main():
         print("  Calculating ramping...")
         dispatch_data = calculate_hydro_generator_ramping(dispatch_data)
         
+        # Detect rough zone operation if enabled
+        if rough_zone_flag:
+            print(f"  Detecting rough zone operation...")
+            dispatch_data = detect_rough_zone_operation(dispatch_data, rough_zone_segment_num, num_segments)
+        else:
+            print(f"  Rough zone operation not active - skipping rough zone cost calculation")
+        
         # Calculate hourly O&M costs
         print("  Calculating hourly O&M costs...")
-        dispatch_data = calculate_hourly_om_costs(dispatch_data, cost_rates)
+        dispatch_data = calculate_hourly_om_costs(dispatch_data, cost_rates, rough_zone_flag)
         
         # Check if this is a pumped storage model and process pumps
         is_pumped_storage = (model_type == "Pumped Storage")
@@ -1093,12 +1270,12 @@ def main():
                 dispatch_data = calculate_hydro_pump_ramping(dispatch_data)
                 
                 print("  Calculating pump hourly O&M costs...")
-                dispatch_data = calculate_hourly_om_costs(dispatch_data, cost_rates)
+                dispatch_data = calculate_hourly_om_costs(dispatch_data, cost_rates, rough_zone_flag)
         
         # Generate summaries
         print("  Generating cost summaries...")
-        summary = generate_om_cost_summary(dispatch_data)
-        per_unit_summary = generate_per_hydro_generator_cost_summary(dispatch_data)
+        summary = generate_om_cost_summary(dispatch_data, rough_zone_flag)
+        per_unit_summary = generate_per_hydro_generator_cost_summary(dispatch_data, rough_zone_flag)
         
         # Display results
         display_om_cost_summary(summary, model_type)
@@ -1108,13 +1285,13 @@ def main():
         if is_pumped_storage:
             pump_units = [unit for unit in dispatch_data['unit_id'].unique() if 'hydro_p' in unit]
             if pump_units:
-                per_pump_summary = generate_per_hydro_pump_cost_summary(dispatch_data)
+                per_pump_summary = generate_per_hydro_pump_cost_summary(dispatch_data, rough_zone_flag)
                 display_per_hydro_pump_cost_summary(per_pump_summary, model_type)
         
         # Create separate O&M cost CSV file
         om_cost_filepath = os.path.join("Simulation_Results", args.filename, f"ALEAF_HydroBoost_{args.filename}__OM_cost.csv")
         print(f"\n  Creating O&M cost CSV file: {om_cost_filepath}")
-        create_om_cost_csv(dispatch_data, om_cost_filepath)
+        create_om_cost_csv(dispatch_data, om_cost_filepath, rough_zone_flag)
         
         print("\n✓ O&M cost calculation completed successfully!")
         print(f"✓ O&M cost time series saved to: {om_cost_filepath}\n")
