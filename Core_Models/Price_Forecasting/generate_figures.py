@@ -10,7 +10,11 @@ def plot_forecast_model_errors(file_name,
                                perfect_foresight_forecast_dict,
                                mean_persistence_forecast_dict,
                                additive_no_regressor_forecast=None,
-                               additive_with_regressors_forecast=None,):
+                               additive_with_regressors_forecast=None,
+                               autoregressive_NN_no_regressors_forecast=None,
+                               autoregressive_NN_with_regressors_forecast=None,
+                               random_forest_no_regressors_forecast=None,
+                               random_forest_with_regressors_forecast=None):
     
     error = dict()
     max_error = 0
@@ -31,6 +35,30 @@ def plot_forecast_model_errors(file_name,
     if additive_with_regressors_forecast is not None:
         e = additive_with_regressors_forecast - perfect_foresight_forecast_dict["DA-LMP"]
         error["Additive With Regressors"] = e
+        if e.abs().max().max():
+            max_error = e.abs().max().max()
+
+    if autoregressive_NN_no_regressors_forecast is not None:
+        e = autoregressive_NN_no_regressors_forecast - perfect_foresight_forecast_dict["DA-LMP"]
+        error["Autoregressive NN No Regressors"] = e
+        if e.abs().max().max():
+            max_error = e.abs().max().max()
+
+    if autoregressive_NN_with_regressors_forecast is not None:
+        e = autoregressive_NN_with_regressors_forecast - perfect_foresight_forecast_dict["DA-LMP"]
+        error["Autoregressive NN With Regressors"] = e
+        if e.abs().max().max():
+            max_error = e.abs().max().max()
+
+    if random_forest_no_regressors_forecast is not None:
+        e = random_forest_no_regressors_forecast - perfect_foresight_forecast_dict["DA-LMP"]
+        error["Random Forest No Regressors"] = e
+        if e.abs().max().max():
+            max_error = e.abs().max().max()
+
+    if random_forest_with_regressors_forecast is not None:
+        e = random_forest_with_regressors_forecast - perfect_foresight_forecast_dict["DA-LMP"]
+        error["Random Forest With Regressors"] = e
         if e.abs().max().max():
             max_error = e.abs().max().max()
 
@@ -65,9 +93,12 @@ def plot_forecast_model_errors(file_name,
     )
 
     # Save and show the results. First make sure there is a directory to save in
-    figure_directory = os.path.join(os.getcwd(), f"src/Private_HydroBoost-main/generated_data/{file_name}/Figures")
-    if os.path.exists(figure_directory) == False:
-        os.mkdir(figure_directory)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
+    figure_directory = os.path.join(repo_root, "Core_Models", "HydroBoost", "generated_data", file_name, "Figures")
+    
+    if not os.path.exists(figure_directory):
+        os.makedirs(figure_directory, exist_ok=True)
         print(figure_directory)
     fig.write_html(f"{figure_directory}/Forecast_error.html")
 
