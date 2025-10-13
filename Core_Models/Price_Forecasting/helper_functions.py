@@ -1,18 +1,37 @@
-#
+# Copyright 2025, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
 
-# HydroBoost Model
-
-# Main Authors:
-# Jonghwan Kwon; Argonne National Laboratory; kwonj@anl.gov
-# Carlos Josue Lopez; Argonne National Laboratory; clopezsalgado@anl.gov
-# Alberto Grimaldi; Argonne National Laboratory; agrimaldi@anl.gov
-
-# Current version: 2.0
-# Last update: 07.31.2025
-
-#
 
 import os
+import argparse
+
+
+def parse_CLI_arguments():
+    """
+    Parse command line arguments for filename input.
+    
+    Returns:
+        str: The filename provided as a command line argument
+    """
+    parser = argparse.ArgumentParser(
+        description="Process HydroBoost input files",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python script.py Model_A
+  python script.py Model_B
+  python script.py Project_2
+        """
+    )
+    
+    parser.add_argument(
+        "filename",
+        type=str,
+        help="Base filename (without path or extension)"
+    )
+    
+    args = parser.parse_args()
+    return args.filename
+
 
 def generate_path(segments):
     """

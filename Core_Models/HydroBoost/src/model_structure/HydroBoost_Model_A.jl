@@ -28,20 +28,58 @@ function execute_HydroBoost_model(project_id::String)
     ALEAF_setting = read_ALEAF_HydroBoost_setting(project_id)
     ALEAF_setting["ALEAF_model_type"] = Abstract_HydroBoost_Model
 
-    # Check cases to run
     Memento.info(_LOGGER, "-- Current case: $project_id")
 
-    # Generate Network Data
-    start_time = time()
-    network_data = generate_networkdata_HydroBoost(ALEAF_setting, project_id)
-    Memento.info(_LOGGER, "[HydroBoost Model]:\tGenerate network data. Time(sec): $(round(time() - start_time, digits=2))")
+    case_set = sort(collect(keys(filter(x->(x.second["Run_Flag"] == true),
+                                        ALEAF_setting["Simulation Configuration"]))))
 
-    # Build and Run HydroBoost model instances 
-    solutions = build_and_run_daily_HydroBoost(ALEAF_setting, network_data)
+    for case_id in case_set
+        # REMOVE this line (it breaks the String keys "1","3"):
+        # case_id = parse(Int64, case_id)
 
-    # Report Solutions
-    export_HydroBoost_results(ALEAF_setting, network_data, solutions, project_id)
+        Memento.info(_LOGGER, "-- Current case ID: $case_id")
 
+        # update ALEAF_setting dictionary 
+        ALEAF_setting_of_case_id = update_simulation_params(ALEAF_setting, case_id)
+
+        # NEW: derive the human label for folder name (e.g., "Test 1")
+        case_label = ALEAF_setting["Simulation Configuration"][case_id]["Case_ID"]
+
+        # Generate Network Data  --> pass the 3rd positional arg (case_label)
+        start_time = time()
+        network_data = generate_networkdata_HydroBoost(ALEAF_setting_of_case_id, project_id, case_label)
+        Memento.info(_LOGGER, "[HydroBoost Model]:\tGenerate network data. Time(sec): $(round(time() - start_time, digits=2))")
+
+        solutions = build_and_run_daily_HydroBoost(ALEAF_setting_of_case_id, network_data)
+        export_HydroBoost_results(ALEAF_setting_of_case_id, network_data, solutions, project_id)
+    end
+end
+
+function update_simulation_params(ALEAF_setting, case_id)
+    # copy ALEAF_setting dictionary first
+    ALEAF_setting_of_case_id = deepcopy(ALEAF_setting)
+
+    # keys in "Simulation Configuration" are "1","2","3","4" -> normalize to String
+    key = string(case_id)
+
+    # update parameters for the given case_id
+    ALEAF_setting_of_case_id["Simulation Setting"]["look_ahead_days_value"]         = ALEAF_setting["Simulation Configuration"][key]["Look_Ahead_Days"]
+    ALEAF_setting_of_case_id["Simulation Setting"]["Interconnection Limits Inflow"] = ALEAF_setting["Simulation Configuration"][key]["Interconnection Limits Inflow"]
+    ALEAF_setting_of_case_id["Simulation Setting"]["Interconnection Limits Outflow"]= ALEAF_setting["Simulation Configuration"][key]["Interconnection Limits Outflow"]
+    ALEAF_setting_of_case_id["Simulation Setting"]["Market_price_forecasting_method"]= ALEAF_setting["Simulation Configuration"][key]["Market_Price_File_ID"]
+
+    for (uid, unit_any) in ALEAF_setting_of_case_id["Gen Technology - BESS"]
+        unit = unit_any
+        unit["Max_Power"]             = ALEAF_setting["Simulation Configuration"][key]["Max_Power"]
+        unit["Max_SOC_MWh"]           = ALEAF_setting["Simulation Configuration"][key]["Max_SOC_MWh"]
+        unit["Min_SOC_MWh"]           = ALEAF_setting["Simulation Configuration"][key]["Min_SOC_MWh"]
+        unit["Max_Charge"]            = ALEAF_setting["Simulation Configuration"][key]["Max_Charge"]  
+        unit["Roundtrip Efficiency"]  = ALEAF_setting["Simulation Configuration"][key]["Roundtrip Efficiency"]
+        unit["Charging Efficiency"]   = ALEAF_setting["Simulation Configuration"][key]["Charging Efficiency"]
+        unit["Discharging Efficiency"]= ALEAF_setting["Simulation Configuration"][key]["Discharging Efficiency"]
+    end
+
+    return ALEAF_setting_of_case_id
 end
 
 function build_and_run_daily_HydroBoost(ALEAF_setting, network_data)
@@ -153,6 +191,7 @@ function build_HydroBoost_optimization_model_instance!(am::Abstract_ALEAF_Model,
     # Storage plant (BESS): dispatch variables
     HydroBoost_variable_iht_binary(JuMP_model, am, :storage, "u_B_iht", ids_i_sto, ids_h, ids_t; bounded_lower=true, lower_bound=0,  bounded_upper=true, upper_bound=1.0)               # Binary variable driven to 1 when BESS is set to charging mode, and 0 otherwise      
     HydroBoost_variable_iht_real(JuMP_model, am, :storage, "e_B_iht", ids_i_sto, ids_h, ids_t; bounded_lower=true, lower_bound=0.0)                                                     # Storage device state of charge in hour t [MWh]
+    HydroBoost_variable_ht_real(JuMP_model, am, :storage, "e_B_ht", ids_h, ids_t; bounded_lower=true, lower_bound=0.0)                                                                  # State of charge of all BESS units in hour t [MWh]
 
     HydroBoost_variable_iht_real(JuMP_model, am, :storage, "p_B_D_iht", ids_i_sto, ids_h, ids_t; bounded_lower=true, lower_bound=0.0)                                                   # Power discharged from BESS and accounted for at point of delivery in period t [MWh]
     HydroBoost_variable_iht_real(JuMP_model, am, :storage, "p_B_C_iht", ids_i_sto, ids_h, ids_t; bounded_lower=true, lower_bound=0.0)                                                   # Power contributing to charge BESS in period t before accounting for losses [MWh]
@@ -387,12 +426,12 @@ function HydroBoost_objective_function(JuMP_model::JuMP.AbstractModel, am::Abstr
         end
     end
 
-    # Adjusted revenue due to regulation deployments
+    # Adjusted revenue due to regulation deployments provided by BESS
     for h in ids_h
         for t in ids_t
             for i in ids_i_sto
-                reg_up_signal = 0.0 # TODO
-                reg_down_signal = 0.0   # TODO
+                reg_up_signal = am.ref[:nw][0][:repdays]["data"][h][t]["Delta_RU"]
+                reg_down_signal = am.ref[:nw][0][:repdays]["data"][h][t]["Delta_RD"]
 
                 JuMP.add_to_expression!(objective, reg_up_signal * am.ref[:nw][0][:repdays]["data"][h][t]["DA_LMP"], get_variable(am, :r_RU_iht, (i,h,t)))
                 JuMP.add_to_expression!(objective, - reg_down_signal * am.ref[:nw][0][:repdays]["data"][h][t]["DA_LMP"], get_variable(am, :r_RD_iht, (i,h,t)))                
@@ -452,8 +491,8 @@ function HydroBoost_constraint_ES_SOC_Balance_Inter_Hour_iht(JuMP_model::JuMP.Ab
     Max_SOC_MWh = parameter(am, bus_idx, :gen_bus, tech_idx, "Max_SOC_MWh")
     Min_SOC_MWh = parameter(am, bus_idx, :gen_bus, tech_idx, "Min_SOC_MWh")
 
-    reg_up_signal = 0.0     # TODO
-    reg_down_signal = 0.0   # TODO
+    reg_up_signal = am.ref[:nw][0][:repdays]["data"][h][t]["Delta_RU"]
+    reg_down_signal = am.ref[:nw][0][:repdays]["data"][h][t]["Delta_RD"]
 
     global prior_e_B_iht = 0
     if (h==1)
@@ -826,14 +865,36 @@ function HydroBoost_constraint_total_ES_power_charge_ht(JuMP_model::JuMP.Abstrac
 
 end
 
-#(f) Intial and final storage of BESS
 # Constraint (21)
-# Constraint (22)
-# Missing constraints present in the mathematical formulation. Are they already included in constrint (6)?
+function HydroBoost_constraint_total_ES_soc_ht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, ids_i_sto, h::Int, t::Int; const_name_flag::Bool=false)
+
+    # parameter
+
+    # variable
+    e_B_ht = get_variable(am, :e_B_ht, (h,t))
+
+    sum_soc = JuMP.AffExpr(0.0)
+    for i in ids_i_sto
+        JuMP.add_to_expression!(sum_soc, 1.0, get_variable(am, :e_B_iht, (i,h,t)))
+    end
+
+    # constraint
+    expr = JuMP.@expression(JuMP_model,
+        e_B_ht - sum_soc
+        )
+    constraint = JuMP.@constraint(JuMP_model, 
+        expr == 0
+        )
+
+    if const_name_flag JuMP.set_name(constraint, string(const_name, "_($h,$t)")) end 
+end
+
+# (f) Intial and final storage of BESS
+# Constraint (22) and (23) are already included in constraint (6).
 
 # (g) Allocation of ancillary services provided by the BESS:
 
-# Constraint (23)
+# Constraint (24)
 function HydroBoost_constraint_ES_reg_up_sale_iht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, i::Int, h::Int, t::Int; const_name_flag::Bool=false)
 
     
@@ -853,7 +914,7 @@ function HydroBoost_constraint_ES_reg_up_sale_iht(JuMP_model::JuMP.AbstractModel
 
 end
 
-# Constraint (24)
+# Constraint (25)
 function HydroBoost_constraint_ES_reg_dn_sale_iht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, i::Int, h::Int, t::Int; const_name_flag::Bool=false)
 
     
@@ -873,7 +934,7 @@ function HydroBoost_constraint_ES_reg_dn_sale_iht(JuMP_model::JuMP.AbstractModel
 
 end
 
-# Constraint (25)
+# Constraint (26)
 function HydroBoost_constraint_ES_spin_sale_iht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, i::Int, h::Int, t::Int; const_name_flag::Bool=false)
 
     
@@ -893,13 +954,13 @@ function HydroBoost_constraint_ES_spin_sale_iht(JuMP_model::JuMP.AbstractModel, 
 
 end
 
-# Constraint (26), (27), and (28) are already included in the objective function formulation.
+# Constraint (27), (28), and (29) are already included in the objective function formulation.
 
 ### Hydroelectric System without Reservoir ###
 
-# h Commitment of hydro generators:
+# (h) Commitment of hydro generators:
 
-# Constraint (29)
+# Constraint (30)
 function HydroBoost_constraint_hydro_commitment_status_jht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, j::Int, h::Int, t::Int, day_id, prior_day_solution; const_name_flag::Bool=false)
 
     if day_id == 1
@@ -969,7 +1030,7 @@ function HydroBoost_constraint_hydro_commitment_status_jht(JuMP_model::JuMP.Abst
 
 end
 
-# Constraint (30)
+# Constraint (31)
 function HydroBoost_constraint_hydro_start_up_shut_down_bound_jht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, j::Int, h::Int, t::Int; const_name_flag::Bool=false)
 
     # parameter  
@@ -989,11 +1050,11 @@ function HydroBoost_constraint_hydro_start_up_shut_down_bound_jht(JuMP_model::Ju
 
 end
 
-# Constraints (31) and (32) already included in section "Define decision variables".
+# Constraints (32) and (33) already included in section "Define decision variables".
 
 # (i) Water discharge of plant:
 
-# Constraints (33) and (35)
+# Constraints (34) and (36)
 function HydroBoost_constraint_hydro_power_water_discharge_bounds_up_ljht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, j::Int, l::Int, h::Int, t::Int; const_name_flag::Bool=false)
     
     if l == 1   # first water block
@@ -1041,7 +1102,7 @@ function HydroBoost_constraint_hydro_power_water_discharge_bounds_up_ljht(JuMP_m
     end
 end
 
-# Constraints (34) and (36)
+# Constraints (35) and (37)
 function HydroBoost_constraint_hydro_power_water_discharge_bounds_down_ljht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, j::Int, l::Int, h::Int, t::Int; const_name_flag::Bool=false)
     
      # parameter  
@@ -1065,7 +1126,7 @@ function HydroBoost_constraint_hydro_power_water_discharge_bounds_down_ljht(JuMP
 
 end
 
-# Constraint (37)
+# Constraint (38)
 function HydroBoost_constraint_hydro_total_water_use_jht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, ids_l, j::Int, h::Int, t::Int; const_name_flag::Bool=false)
     
     # set
@@ -1095,9 +1156,9 @@ function HydroBoost_constraint_hydro_total_water_use_jht(JuMP_model::JuMP.Abstra
 
 end
 
-# (h) Generation of hydro power:
+# (j) Generation of hydro power:
 
-# Constraint (38)
+# Constraint (39)
 function HydroBoost_constraint_hydro_power_generation_jht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, ids_l, j::Int, h::Int, t::Int; const_name_flag::Bool=false)
     
     # set
@@ -1130,7 +1191,7 @@ function HydroBoost_constraint_hydro_power_generation_jht(JuMP_model::JuMP.Abstr
 
 end
 
-# Constraint (39)
+# Constraint (40)
 function HydroBoost_constraint_total_hydro_power_generation_jht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, ids_j_hydro, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1156,7 +1217,7 @@ end
 
 # (k) Water balance equation:
 
-# Constraint (40)
+# Constraint (41)
 function HydroBoost_constraint_hydro_water_balance_ht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, ids_j_hydro, h::Int, t::Int, day_id, prior_day_solution; const_name_flag::Bool=false)
     
     # parameter
@@ -1197,7 +1258,7 @@ end
 
 # (l) Spillage bounds:
 
-# Constraint (41)
+# Constraint (42)
 function HydroBoost_constraint_hydro_power_water_spillage_ht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, ids_j_hydro, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1231,7 +1292,7 @@ end
 
 # (m) Rough zone constraints:
 
-# Constraint (42)
+# Constraint (43)
 function HydroBoost_constraint_hydro_rough_zone_y_l_minus_bound_jht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, rough_zone_segment_number, j::Int, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1251,7 +1312,7 @@ function HydroBoost_constraint_hydro_rough_zone_y_l_minus_bound_jht(JuMP_model::
 
 end
 
-# Constraint (43)
+# Constraint (44)
 function HydroBoost_constraint_hydro_rough_zone_y_l_plus_bound_jht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, rough_zone_segment_number, j::Int, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1275,7 +1336,7 @@ function HydroBoost_constraint_hydro_rough_zone_y_l_plus_bound_jht(JuMP_model::J
 
 end
 
-# Constraint (44)
+# Constraint (45)
 function HydroBoost_constraint_hydro_rough_zone_y_l_minus_big_M_jht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, rough_zone_segment_number, j::Int, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1297,7 +1358,7 @@ function HydroBoost_constraint_hydro_rough_zone_y_l_minus_big_M_jht(JuMP_model::
 
 end
 
-# Constraint (45)
+# Constraint (46)
 function HydroBoost_constraint_hydro_rough_zone_y_l_plus_big_M_jht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, rough_zone_segment_number, j::Int, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1324,9 +1385,9 @@ function HydroBoost_constraint_hydro_rough_zone_y_l_plus_big_M_jht(JuMP_model::J
 
 end
 
-# Constraints (46) and (47) already included in section "Define decision variables".
+# Constraints (47) and (48) already included in section "Define decision variables".
 
-# Constraint (48-A)
+# Constraint (49-A)
 function HydroBoost_constraint_hydro_rough_zone_y_l_plus_upper_bound_jht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, rough_zone_segment_number, j::Int, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1349,7 +1410,7 @@ function HydroBoost_constraint_hydro_rough_zone_y_l_plus_upper_bound_jht(JuMP_mo
 
 end
 
-# Constraint (48-B)
+# Constraint (49-B)
 function HydroBoost_constraint_hydro_rough_zone_y_l_minus_upper_bound_jht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, rough_zone_segment_number, j::Int, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1376,7 +1437,7 @@ end
 
 # (n) Non-dispatchable renewable generation constraints:
 
-# Constraint (49)
+# Constraint (50)
 function HydroBoost_constraint_RES_balance_kht(JuMP_model::JuMP.AbstractModel,am::Abstract_ALEAF_Model, const_name::String, k::String, h::Int, t::Int; const_name_flag::Bool=false)
 
     # parameter
@@ -1395,7 +1456,7 @@ function HydroBoost_constraint_RES_balance_kht(JuMP_model::JuMP.AbstractModel,am
     end
 end
 
-# Constraint (50)
+# Constraint (51)
 function HydroBoost_constraint_RES_total_ht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, k, h::Int, t::Int; const_name_flag::Bool=false,)
 
     # variable
@@ -1410,13 +1471,13 @@ function HydroBoost_constraint_RES_total_ht(JuMP_model::JuMP.AbstractModel, am::
     end
 end
 
-# Constraint (51) already included in section "Define decision variables".
+# Constraint (52) already included in section "Define decision variables".
 
 ### Coupling constraints ###
 
 # (o) Hydro + BESS + RES power balances and interconnection limits:
 
-# Constraint (52)
+# Constraint (53)
 function HydroBoost_constraint_Hydro_power_generation_coupling_ht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1437,7 +1498,7 @@ function HydroBoost_constraint_Hydro_power_generation_coupling_ht(JuMP_model::Ju
 
 end
 
-# Constraint (53)
+# Constraint (54)
 function HydroBoost_constraint_RES_power_generation_coupling_ht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1458,7 +1519,7 @@ function HydroBoost_constraint_RES_power_generation_coupling_ht(JuMP_model::JuMP
 
 end
 
-# Constraint (54)
+# Constraint (55)
 function HydroBoost_constraint_ES_power_generation_coupling_ht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1480,7 +1541,7 @@ function HydroBoost_constraint_ES_power_generation_coupling_ht(JuMP_model::JuMP.
 
 end
 
-# Constraint (55)
+# Constraint (56)
 function HydroBoost_constraint_outflow_interconnection_limit_ht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1503,7 +1564,7 @@ function HydroBoost_constraint_outflow_interconnection_limit_ht(JuMP_model::JuMP
 
 end
 
-# Constraint (56)
+# Constraint (57)
 function HydroBoost_constraint_inflow_interconnection_limit_ht(JuMP_model::JuMP.AbstractModel, am::Abstract_ALEAF_Model, const_name::String, h::Int, t::Int; const_name_flag::Bool=false)
     
     # parameter  
@@ -1717,7 +1778,7 @@ function HydroBoost_report_result_plant_dispatch(am::Abstract_ALEAF_Model, ALEAF
     dispatch_file_name = string("ALEAF_HydroBoost_",case_name,"__plant_dispatch.csv")
     
     # Write Label 
-    dispatch_label_list = ["day", "hour", "time", "p_B_DT_ht", "p_B_CT_ht", "p_Gr_St_ht", "p_G_ht", "p_GB_ht", "p_G_Gr_ht", "p_R_ht", "p_R_Gr_ht", "p_R_St_ht", "s_ht", "q_G_jht", "e_H_ht", "I_ht", "LMP", "Reg Up Price", "Reg Dn Price", "Spin Price"]
+    dispatch_label_list = ["day", "hour", "time", "LMP", "Reg Up Price", "Reg Dn Price", "Spin Price", "Delta RU", "Delta RD", "p_G_ht", "p_GB_ht", "p_G_Gr_ht", "q_G_jht", "e_H_ht", "I_ht", "s_ht", "p_B_DT_ht", "p_B_CT_ht", "e_B_ht", "p_R_ht", "p_R_Gr_ht", "p_R_St_ht","p_Gr_St_ht"]
 
     # Write Outputs
     ids_j_hydro = [(j) for (j) in get_index(am, :gen_index, 0) if parameter(am, 0, :gen_index, "UNIT_CATEGORY", j) == "HYDRO"]
@@ -1747,6 +1808,7 @@ function HydroBoost_report_result_plant_dispatch(am::Abstract_ALEAF_Model, ALEAF
                 # storage
                 p_B_DT_ht = daily_solutions[string(day_id)]["solution"]["storage"][idx_ht]["p_B_DT_ht"]
                 p_B_CT_ht = daily_solutions[string(day_id)]["solution"]["storage"][idx_ht]["p_B_CT_ht"]
+                e_B_ht = daily_solutions[string(day_id)]["solution"]["storage"][idx_ht]["e_B_ht"]
                 p_Gr_St_ht = daily_solutions[string(day_id)]["solution"]["storage"][idx_ht]["p_Gr_St_ht"]
 
                 # hydro
@@ -1775,11 +1837,13 @@ function HydroBoost_report_result_plant_dispatch(am::Abstract_ALEAF_Model, ALEAF
                 Reg_up_price = network_data["repdays"][day_id]["data"][hour_id][time_id]["Regulation_up"]
                 Reg_dn_price = network_data["repdays"][day_id]["data"][hour_id][time_id]["Regulation_down"]
                 Spin_price = network_data["repdays"][day_id]["data"][hour_id][time_id]["Spin"]
+                Delta_RU = network_data["repdays"][day_id]["data"][hour_id][time_id]["Delta_RU"]
+                Delta_RD = network_data["repdays"][day_id]["data"][hour_id][time_id]["Delta_RD"]
                 
                 row_id = (day_id-1)*length(ids_h)*length(ids_t) + (hour_id-1)*length(ids_t) + (time_id) + 1
                 
-                dispatch_output_list[row_id, :] = [day_id, hour_id, time_id, 
-                    p_B_DT_ht, p_B_CT_ht, p_Gr_St_ht, p_G_ht, p_GB_ht, p_G_Gr_ht, p_R_ht, p_R_Gr_ht, p_R_St_ht, s_ht, q_G_jht, e_H_ht, I_ht, LMP, Reg_up_price, Reg_dn_price, Spin_price]
+                dispatch_output_list[row_id, :] = [day_id, hour_id, time_id, LMP, Reg_up_price, Reg_dn_price, Spin_price, Delta_RU, Delta_RD,
+                p_G_ht, p_GB_ht, p_G_Gr_ht, q_G_jht, e_H_ht, I_ht, s_ht, p_B_DT_ht, p_B_CT_ht, e_B_ht, p_R_ht, p_R_Gr_ht, p_R_St_ht, p_Gr_St_ht]
             end
         end
     end
@@ -2091,6 +2155,8 @@ function HydroBoost_report_result_objective(am::Abstract_ALEAF_Model, ALEAF_sett
             Pru   = network_data["repdays"][day_id]["data"][h][t]["Regulation_up"]
             Prd   = network_data["repdays"][day_id]["data"][h][t]["Regulation_down"]
             Pspin = network_data["repdays"][day_id]["data"][h][t]["Spin"]
+            reg_up_signal   = network_data["repdays"][day_id]["data"][h][t]["Delta_RU"]
+            reg_down_signal = network_data["repdays"][day_id]["data"][h][t]["Delta_RD"]
 
             # Energy market term
             p_G_Gr_ht  = daily_solutions[day_key]["solution"]["hydro"][idx_ht]["p_G_Gr_ht"]
@@ -2107,8 +2173,8 @@ function HydroBoost_report_result_objective(am::Abstract_ALEAF_Model, ALEAF_sett
                 sol_s = daily_solutions[day_key]["solution"]["storage"][key_iht]
                 rRU = sol_s["r_RU_iht"]; rRD = sol_s["r_RD_iht"]; rSR = sol_s["r_SR_iht"]
                 as_bess += Pru*rRU + Prd*rRD + Pspin*rSR
-                reg_up_signal   = 0.0
-                reg_down_signal = 0.0
+                reg_up_signal   = network_data["repdays"][day_id]["data"][h][t]["Delta_RU"]
+                reg_down_signal = network_data["repdays"][day_id]["data"][h][t]["Delta_RD"]
                 reg_adj_bess += reg_up_signal*LMP*rRU - reg_down_signal*LMP*rRD
             end
 
@@ -2566,11 +2632,13 @@ function read_ALEAF_HydroBoost_setting(project_id::String)
     for data_category in tab_names_with_category_list
         ALEAF_setting[data_category] = read_xlsx_return_dict_string_any(string(setting_file_location, setting_file_name), data_category; first_row_value = 2)
     end
-    
+
+    ALEAF_setting["Simulation Configuration"] = read_xlsx_return_dict_string_any(string(setting_file_location, setting_file_name), "Simulation Configuration"; first_row_value = 2)
+
     return ALEAF_setting
 end
 
-function generate_networkdata_HydroBoost(ALEAF_setting::Dict{String,<:Any}, project_id; year_id::Int64=1)
+function generate_networkdata_HydroBoost(ALEAF_setting::Dict{String,<:Any}, project_id, case_id; year_id::Int64=1)
 
     # Generate network data
     network_data = Dict{String, Any}()
@@ -2621,13 +2689,13 @@ function generate_networkdata_HydroBoost(ALEAF_setting::Dict{String,<:Any}, proj
         end
     end
 
-    # Collect market price time-series data ["DA_LMP", "Regulation_down", "Regulation_up", "Spin"]
-    
-    forecasting_method = ALEAF_setting["Simulation Setting"]["Market_price_forecasting_method"]     # Perfect_foresight, Mean_persistence, Additive_model_with_regressors, Additive_model_no_regressors, Autoregressive_with_regressors, Autoregressive_no_regressors, Manual_Forecast
+    # Collect market price time-series data ["DA_LMP", "Regulation_down", "Regulation_up", "Spin", "Delta_RU", "Delta_RD"]
+
+    forecasting_method = ALEAF_setting["Simulation Setting"]["Market_price_forecasting_method"]  # Perfect_foresight, Mean_persistence, Additive_model_with_regressors, Additive_model_no_regressors, Autoregressive_with_regressors, Autoregressive_no_regressors, Manual_Forecast
 
     if forecasting_method in ["Perfect_foresight", "Mean_persistence", "Manual_Forecast"]
-        
-        market_price_time_series_data_list = ["DA_LMP", "Regulation_down", "Regulation_up", "Spin"]
+
+        market_price_time_series_data_list = ["DA_LMP", "Regulation_down", "Regulation_up", "Spin", "Delta_RU", "Delta_RD"]
         market_price_data_path = string(data_location, "Market/", forecasting_method, "/")
 
         for data_label in market_price_time_series_data_list
@@ -2636,22 +2704,20 @@ function generate_networkdata_HydroBoost(ALEAF_setting::Dict{String,<:Any}, proj
         end
 
     else
-
-        # read LMP
+        # read LMP from selected method
         timeSeries_df = CSV.read(string(data_location, "Market/", forecasting_method, ".csv"), DataFrame)
         allocate_market_price_sub_hourly_timeseries_data!(timeSeries_df, network_data, ALEAF_setting, "DA_LMP")
-        
-        # read AS prices from Mean_persistence folder
-        market_price_time_series_data_list = ["Regulation_down", "Regulation_up", "Spin"]
+
+        # read AS prices + signals from Mean_persistence folder
+        market_price_time_series_data_list = ["Regulation_down", "Regulation_up", "Spin", "Delta_RU", "Delta_RD"]
         market_price_data_path = string(data_location, "Market/Mean_persistence/")
 
         for data_label in market_price_time_series_data_list
             timeSeries_df = CSV.read(string(market_price_data_path, data_label, ".csv"), DataFrame)
             allocate_market_price_sub_hourly_timeseries_data!(timeSeries_df, network_data, ALEAF_setting, data_label)
         end
-
     end
-    
+
     # collect hydro time-series data ["Hydro - Daily", "Hydro - Hourly"]
     hydro_data_path = string(data_location, "Hydro/")
     
@@ -2662,7 +2728,7 @@ function generate_networkdata_HydroBoost(ALEAF_setting::Dict{String,<:Any}, proj
     # --- "Hydro - Hourly"
     timeSeries_df = CSV.read(string(hydro_data_path, "Hourly_flow.csv"), DataFrame)
 
-    allocate_hydro_sub_hourly_timeseries_data!(timeSeries_df, network_data, ALEAF_setting, ["Inflow", "Diversion", "Water_Release_Requirement"])
+    allocate_hydro_sub_hourly_timeseries_data!(timeSeries_df, network_data, ALEAF_setting, ["Inflow", "Water_Release_Requirement", "Diversion"])
     
     # collect RES profiles time-series data ["RES - Hourly"]
     res_data_path = string(data_location, "RES/")
@@ -2678,6 +2744,9 @@ function generate_networkdata_HydroBoost(ALEAF_setting::Dict{String,<:Any}, proj
     check_and_create_path(output_path)
 
     output_path = string(output_path, project_id, "/")
+    check_and_create_path(output_path)
+
+    output_path = string(output_path, case_id, "/")
     check_and_create_path(output_path)
 
     network_data["output_path"] = output_path

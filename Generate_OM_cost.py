@@ -14,40 +14,13 @@ Example:
     (automatically resolves to Input_Spreadsheets/Model_A.xlsx)
 """
 
-import argparse
 import os
 import sys
 import pandas as pd
 import numpy as np
 from openpyxl import load_workbook
 from typing import Set, Tuple, List, Dict
-
-
-def parse_arguments():
-    """
-    Parse command line arguments.
-    
-    Returns:
-        argparse.Namespace: Parsed arguments
-    """
-    parser = argparse.ArgumentParser(
-        description="Validate O&M costs and detect model type for HydroBoost Excel files",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python Generate_OM_cost.py Model_A
-  python Generate_OM_cost.py Model_B
-  python Generate_OM_cost.py Model_C
-        """
-    )
-    
-    parser.add_argument(
-        "filename",
-        type=str,
-        help="Base filename (without path or extension). Script adds 'Simulation_Results/' prefix and '.xlsx' extension"
-    )
-    
-    return parser.parse_args()
+from Core_Models.Price_Forecasting.helper_functions import parse_CLI_arguments
 
 
 def construct_filepath(filename: str) -> str:
@@ -1154,10 +1127,10 @@ def main():
     Main function to orchestrate model type detection, validation, and O&M cost calculation.
     """
     # Parse arguments
-    args = parse_arguments()
+    filename = parse_CLI_arguments()
     
     # Construct full filepath
-    filepath = construct_filepath(args.filename)
+    filepath = construct_filepath(filename)
     
     # Check if file exists
     if not os.path.exists(filepath):
@@ -1206,7 +1179,7 @@ def main():
         sys.exit(1)
     
     # Construct dispatch file path
-    dispatch_filepath = construct_dispatch_filepath(args.filename)
+    dispatch_filepath = construct_dispatch_filepath(filename)
     
     # Check if dispatch file exists
     if not os.path.exists(dispatch_filepath):
@@ -1289,7 +1262,7 @@ def main():
                 display_per_hydro_pump_cost_summary(per_pump_summary, model_type)
         
         # Create separate O&M cost CSV file
-        om_cost_filepath = os.path.join("Simulation_Results", args.filename, f"ALEAF_HydroBoost_{args.filename}__OM_cost.csv")
+        om_cost_filepath = os.path.join("Simulation_Results", filename, f"ALEAF_HydroBoost_{filename}__OM_cost.csv")
         print(f"\n  Creating O&M cost CSV file: {om_cost_filepath}")
         create_om_cost_csv(dispatch_data, om_cost_filepath, rough_zone_flag)
         

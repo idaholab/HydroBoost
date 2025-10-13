@@ -1,30 +1,26 @@
 # Copyright 2025, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
 
 """
-Additive forecasting models using Facebook Prophet for DA-LMP price forecasting.
+Autoregressive neural network forecasting models using NeuralProphet for DA-LMP price forecasting.
 
-This module provides two Prophet-based forecasting approaches:
-1. No regressors: Time series decomposition using only historical DA-LMP values
-2. With regressors: Time series decomposition including external features (e.g., temperature, demand)
+This module provides two NeuralProphet-based forecasting approaches:
+1. No regressors: Autoregressive neural network using only historical DA-LMP values
+2. With regressors: Autoregressive neural network with external features (e.g., temperature, demand)
 
 Both models generate forecasts for a configurable number of days (default: 7 days, 168 hours).
 When use_perfect_foresight_first_day=True (default):
 - First day (hours 0-23): Perfect foresight (actual values)
-- Remaining days: Prophet-based predictions
+- Remaining days: NeuralProphet-based predictions
 """
 
-import math
 import os
+import warnings
 from datetime import timedelta
 from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-
-# NumPy compatibility for older versions
-np.float_ = np.float64
-
-from prophet import Prophet
+from neuralprophet import NeuralProphet
 
 from helper_functions import generate_path, parse_CLI_arguments
 from import_data import read_price_and_forecasting
@@ -33,20 +29,28 @@ from perfect_foresight_model import create_perfect_foresight_forecast
 # Module-level constants
 HOURS_PER_DAY = 24
 
+# Suppress NeuralProphet warnings for cleaner output
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
 
-def additive_model_no_regressors(
+
+def autoregressive_NN_no_regressors(
     price_df: pd.DataFrame,
     perfect_dict: Dict[str, pd.DataFrame],
     project: str,
     num_forecast_days: int = 7,
-    use_perfect_foresight_first_day: bool = True
+    use_perfect_foresight_first_day: bool = True,
+    n_lags: int = 24,
+    epochs: int = 50,
+    learning_rate: float = 0.01,
+    batch_size: int = 32
 ) -> pd.DataFrame:
     """
-    Create DA-LMP forecast using Prophet time series decomposition without external regressors.
+    Create DA-LMP forecast using NeuralProphet autoregressive neural network without external regressors.
     
-    Uses Facebook Prophet to model the additive components of the time series (trend, 
-    seasonality, holidays) based solely on historical DA-LMP values. Forecasts can optionally
-    use perfect foresight for the first day and Prophet predictions for remaining days.
+    Uses NeuralProphet to model the time series with an autoregressive neural network (AR-Net)
+    that learns complex patterns from historical DA-LMP values. The model uses past values 
+    as features to predict future values.
     
     Parameters
     ----------
@@ -61,8 +65,17 @@ def additive_model_no_regressors(
     num_forecast_days : int, optional
         Number of days in forecast window (default: 7, resulting in 168 hours).
     use_perfect_foresight_first_day : bool, optional
-        If True (default), hours 0-23 use perfect foresight values, hours 24+ use Prophet.
-        If False, all hours use Prophet predictions.
+        If True (default), hours 0-23 use perfect foresight values, hours 24+ use NeuralProphet.
+        If False, all hours use NeuralProphet predictions.
+    n_lags : int, optional
+        Number of lagged observations to use as autoregressive features (default: 24).
+        E.g., n_lags=24 means the model uses the previous 24 hours to predict.
+    epochs : int, optional
+        Number of training epochs (default: 50).
+    learning_rate : float, optional
+        Learning rate for neural network training (default: 0.01).
+    batch_size : int, optional
+        Batch size for training (default: 32).
     
     Returns
     -------
@@ -73,41 +86,40 @@ def additive_model_no_regressors(
         - Values: Forecasted DA-LMP prices ($/MWh)
         
         If use_perfect_foresight_first_day is True, hours 0-23 contain perfect 
-        foresight values and remaining hours contain Prophet predictions.
-        Otherwise, all hours contain Prophet predictions.
+        foresight values and remaining hours contain NeuralProphet predictions.
+        Otherwise, all hours contain NeuralProphet predictions.
     
     Raises
     ------
     KeyError
         If 'DA-LMP' column is missing from price_df or perfect_dict.
     ValueError
-        If price_df has insufficient data for Prophet fitting.
+        If price_df has insufficient data for NeuralProphet fitting.
     RuntimeError
-        If Prophet model fails to fit or predict.
+        If NeuralProphet model fails to fit or predict.
     OSError
         If output file cannot be written.
     
     Notes
     -----
-    - Prophet predicts with an extra buffer day beyond the forecast window for safety
-    - If predictions run short for any date, they are padded with the last
-      predicted value to maintain the forecast window
-    - Output is saved to: generated_data/<project>/Market/Additive_Models/
-      Additive_model_no_regressors.csv
-    - Model uses default Prophet hyperparameters:
-      * changepoint_prior_scale=1 (moderate trend flexibility)
-      * changepoint_range=1 (changepoints throughout entire history)
+    - NeuralProphet uses autoregressive features (n_lags previous values) for prediction
+    - Training is performed silently (progress output suppressed)
+    - Model uses AR-Net architecture with configurable hyperparameters
+    - Output is saved to: generated_data/<project>/Market/Autoregressive_NN/
+      Autoregressive_NN_no_regressors.csv
     
     Examples
     --------
     >>> price_df, _ = read_price_and_forecasting('Model_A')
     >>> perfect_dict = create_perfect_foresight_forecast(price_df, 'Model_A')
-    >>> # Default: 7-day forecast with perfect foresight for first day
-    >>> forecast_df = additive_model_no_regressors(price_df, perfect_dict, 'Model_A')
-    >>> # Custom: 5-day forecast with all Prophet predictions
-    >>> forecast_df = additive_model_no_regressors(
-    ...     price_df, perfect_dict, 'Model_A', num_forecast_days=5, 
-    ...     use_perfect_foresight_first_day=False
+    >>> # Default: 7-day forecast with 24-hour lags
+    >>> forecast_df = autoregressive_NN_no_regressors(price_df, perfect_dict, 'Model_A')
+    >>> # Custom: 5-day forecast with 48-hour lags, 100 epochs
+    >>> forecast_df = autoregressive_NN_no_regressors(
+    ...     price_df, perfect_dict, 'Model_A', 
+    ...     num_forecast_days=5,
+    ...     n_lags=48,
+    ...     epochs=100
     ... )
     """
     # Calculate forecast parameters
@@ -120,44 +132,83 @@ def additive_model_no_regressors(
     if 'DA-LMP' not in perfect_dict:
         raise KeyError("perfect_dict must contain 'DA-LMP' key")
     
-    if len(price_df) < HOURS_PER_DAY:
+    if len(price_df) < n_lags + HOURS_PER_DAY:
         raise ValueError(
-            f"price_df must contain at least {HOURS_PER_DAY} hours of data for Prophet fitting"
+            f"price_df must contain at least {n_lags + HOURS_PER_DAY} hours of data "
+            f"for NeuralProphet fitting with n_lags={n_lags}"
         )
     
     try:
-        # Prepare data for Prophet (requires 'ds' for datetime and 'y' for target)
-        df_prophet = price_df[['DA-LMP']].reset_index().rename(
+        # Prepare data for NeuralProphet (requires 'ds' for datetime and 'y' for target)
+        df_neural = price_df[['DA-LMP']].reset_index().rename(
             columns={'Date-Time': 'ds', 'DA-LMP': 'y'}
         )
         
-        # Initialize and fit Prophet model
-        model = Prophet(
-            changepoint_prior_scale=1,  # Controls trend flexibility
-            changepoint_range=1  # Use full history for changepoints
+        # Initialize NeuralProphet model with autoregressive components
+        model = NeuralProphet(
+            n_lags=n_lags,
+            n_forecasts=forecast_hours,  # Forecast all hours at once
+            epochs=epochs,
+            learning_rate=learning_rate,
+            batch_size=batch_size,
+            yearly_seasonality=True,
+            weekly_seasonality=True,
+            daily_seasonality=True
         )
-        model.fit(df_prophet)
         
-        # Create future dataframe for predictions with buffer
-        # Predict extra days beyond forecast window for safety
+        # Fit the model
+        metrics = model.fit(df_neural, freq='h')
+        
+        # Generate predictions
+        # Create future dataframe with buffer for safety (similar to Prophet approach)
         prediction_periods = HOURS_PER_DAY * (num_forecast_days + 1)
-        future = model.make_future_dataframe(periods=prediction_periods, freq='h')
+        future = model.make_future_dataframe(
+            df_neural,
+            periods=prediction_periods,
+            n_historic_predictions=len(df_neural)
+        )
         
-        # Generate predictions and extract relevant portion
-        predictions = model.predict(future)
-        # Skip only first hour to get all forecast predictions
-        predicted_values = predictions['yhat'].iloc[1:].to_numpy()
+        # Generate forecast
+        forecast = model.predict(future)
+        
+        # Extract predictions - NeuralProphet with n_forecasts creates columns yhat1, yhat2, ..., yhat{n_forecasts}
+        # For rolling forecasts: each row contains a full forecast horizon
+        # We want to extract 365 forecasts of 168 hours each (one per day)
+        predicted_values = []
+        
+        # Get future predictions only (skip historical predictions)
+        future_forecast = forecast.iloc[len(df_neural):].copy()
+        
+        # Extract forecasts - for each forecast origin, get the 168-hour forecast
+        for i in range(len(future_forecast)):
+            forecast_row = []
+            # Extract yhat1 through yhat{forecast_hours} for this forecast origin
+            for h in range(1, forecast_hours + 1):
+                col_name = f'yhat{h}'
+                if col_name in future_forecast.columns:
+                    forecast_row.append(future_forecast[col_name].iloc[i])
+                else:
+                    # If column doesn't exist, pad with NaN
+                    forecast_row.append(np.nan)
+            
+            predicted_values.extend(forecast_row)
+            
+            # Only take first 365 forecasts (one per day of year)
+            if i >= 364:
+                break
+        
+        predicted_values = np.array(predicted_values)
         
     except Exception as e:
-        raise RuntimeError(f"Prophet model fitting or prediction failed: {str(e)}") from e
+        raise RuntimeError(f"NeuralProphet model fitting or prediction failed: {str(e)}") from e
     
     # Use perfect foresight template structure (will be transposed for filling)
     template = perfect_dict['DA-LMP'].T.copy()
     num_forecasts = template.shape[0]
     
     # Fill each forecast date with corresponding predictions
-    for i in range(num_forecasts):
-        start_idx = i * HOURS_PER_DAY
+    for i in range(min(num_forecasts, len(predicted_values) // forecast_hours)):
+        start_idx = i * forecast_hours
         forecast_block = predicted_values[start_idx:start_idx + forecast_hours]
         
         # Handle edge case: pad if predictions are insufficient
@@ -171,10 +222,10 @@ def additive_model_no_regressors(
         
         # Apply predictions based on mode
         if use_perfect_foresight_first_day:
-            # Keep perfect foresight for hours 0-23, use Prophet for hours 24+
+            # Keep perfect foresight for hours 0-23, use NeuralProphet for hours 24+
             template.iloc[i, HOURS_PER_DAY:] = forecast_block[HOURS_PER_DAY:]
         else:
-            # Use Prophet predictions for all hours
+            # Use NeuralProphet predictions for all hours
             template.iloc[i, :] = forecast_block
     
     # Transpose back to standard format (hours as rows, dates as columns)
@@ -182,30 +233,34 @@ def additive_model_no_regressors(
     
     # Save output
     try:
-        out_dir = generate_path([project, 'Market', 'Additive_Models'])
-        output_path = os.path.join(out_dir, 'Additive_model_no_regressors.csv')
+        out_dir = generate_path([project, 'Market', 'Autoregressive_NN'])
+        output_path = os.path.join(out_dir, 'Autoregressive_NN_no_regressors.csv')
         result.to_csv(output_path, index=True)
-        print(f"✓ Saved additive model (no regressors) to: {output_path}")
+        print(f"✓ Saved autoregressive NN model (no regressors) to: {output_path}")
     except OSError as e:
         raise OSError(f"Failed to write output file: {str(e)}") from e
     
     return result
 
 
-def additive_model_with_regressors(
+def autoregressive_NN_with_regressors(
     price_df: pd.DataFrame,
     perfect_dict: Dict[str, pd.DataFrame],
     features: Optional[List[str]],
     project: str,
     num_forecast_days: int = 7,
-    use_perfect_foresight_first_day: bool = True
+    use_perfect_foresight_first_day: bool = True,
+    n_lags: int = 24,
+    epochs: int = 50,
+    learning_rate: float = 0.01,
+    batch_size: int = 32
 ) -> Optional[pd.DataFrame]:
     """
-    Create DA-LMP forecast using Prophet with external regressors (e.g., temperature, demand).
+    Create DA-LMP forecast using NeuralProphet AR-Net with external regressors (e.g., temperature, demand).
     
-    Uses Facebook Prophet to model the time series including external features as regressors.
-    This captures relationships between DA-LMP and other variables. Future regressor values
-    are generated by repeating the last 24 hours cyclically for each forecast day.
+    Uses NeuralProphet to model the time series with an autoregressive neural network that
+    includes external features as additional inputs. Future regressor values are generated
+    by repeating the last 24 hours cyclically for each forecast day.
     
     Parameters
     ----------
@@ -223,13 +278,21 @@ def additive_model_with_regressors(
     num_forecast_days : int, optional
         Number of days in forecast window (default: 7, resulting in 168 hours).
     use_perfect_foresight_first_day : bool, optional
-        If True (default), hours 0-23 use perfect foresight values, hours 24+ use Prophet.
-        If False, all hours use Prophet predictions.
+        If True (default), hours 0-23 use perfect foresight values, hours 24+ use NeuralProphet.
+        If False, all hours use NeuralProphet predictions.
+    n_lags : int, optional
+        Number of lagged observations for autoregressive features (default: 24).
+    epochs : int, optional
+        Number of training epochs (default: 50).
+    learning_rate : float, optional
+        Learning rate for neural network training (default: 0.01).
+    batch_size : int, optional
+        Batch size for training (default: 32).
     
     Returns
     -------
     Optional[pd.DataFrame]
-        Forecast DataFrame with same structure as additive_model_no_regressors,
+        Forecast DataFrame with same structure as autoregressive_NN_no_regressors,
         or None if no features are provided.
         
         If returned:
@@ -243,9 +306,9 @@ def additive_model_with_regressors(
         If 'DA-LMP' column or any feature column is missing from price_df,
         or if 'DA-LMP' key is missing from perfect_dict.
     ValueError
-        If price_df has fewer than 24 hours of data (needed for regressor extension).
+        If price_df has insufficient data for NeuralProphet fitting.
     RuntimeError
-        If Prophet model fails to fit or predict.
+        If NeuralProphet model fails to fit or predict.
     OSError
         If output file cannot be written.
     
@@ -254,8 +317,8 @@ def additive_model_with_regressors(
     >>> price_df, features = read_price_and_forecasting('Model_A')
     >>> perfect_dict = create_perfect_foresight_forecast(price_df, 'Model_A')
     >>> if features:
-    ...     # Default: 7-day forecast with perfect foresight for first day
-    ...     forecast_df = additive_model_with_regressors(
+    ...     # Default: 7-day forecast with features
+    ...     forecast_df = autoregressive_NN_with_regressors(
     ...         price_df, perfect_dict, features, 'Model_A'
     ...     )
     ...     print(f"Used regressors: {features}")
@@ -265,7 +328,7 @@ def additive_model_with_regressors(
     
     # Handle case with no regressors
     if not features:
-        print("ℹ No regressors provided; skipping additive model with regressors.")
+        print("ℹ No regressors provided; skipping autoregressive NN with regressors.")
         return None
     
     # Input validation
@@ -281,37 +344,46 @@ def additive_model_with_regressors(
     if 'DA-LMP' not in perfect_dict:
         raise KeyError("perfect_dict must contain 'DA-LMP' key")
     
-    if len(price_df) < HOURS_PER_DAY:
+    if len(price_df) < n_lags + HOURS_PER_DAY:
         raise ValueError(
-            f"price_df must contain at least {HOURS_PER_DAY} hours of data "
-            f"for regressor extension"
+            f"price_df must contain at least {n_lags + HOURS_PER_DAY} hours of data "
+            f"for NeuralProphet fitting"
         )
     
     try:
         # Prepare data including all regressors
-        df_prophet = price_df.reset_index().rename(
+        df_neural = price_df.reset_index().rename(
             columns={'Date-Time': 'ds', 'DA-LMP': 'y'}
         )
         columns_to_keep = ['ds', 'y'] + features
-        df_prophet = df_prophet[columns_to_keep]
+        df_neural = df_neural[columns_to_keep]
         
-        # Initialize Prophet and add each regressor
-        model = Prophet(
-            changepoint_prior_scale=1,
-            changepoint_range=1
+        # Initialize NeuralProphet model
+        model = NeuralProphet(
+            n_lags=n_lags,
+            n_forecasts=1,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            batch_size=batch_size,
+            yearly_seasonality=True,
+            weekly_seasonality=True,
+            daily_seasonality=True
         )
-        for feature in features:
-            model.add_regressor(feature)
         
-        model.fit(df_prophet)
+        # Add each regressor
+        for feature in features:
+            model.add_future_regressor(feature)
+        
+        # Fit the model
+        metrics = model.fit(df_neural, freq='h')
         
         # Extend dataframe with future dates and cyclically repeated regressor values
         # Strategy: Repeat the last 24 hours of regressor values for each future day
-        last_24_hours = df_prophet.iloc[-HOURS_PER_DAY:].copy()
-        extended_df = df_prophet.copy()
+        last_24_hours = df_neural.iloc[-HOURS_PER_DAY:].copy()
+        extended_df = df_neural.copy()
         
         # Extend for all forecast days
-        for day_offset in range(1, num_forecast_days):
+        for day_offset in range(1, num_forecast_days + 1):
             future_block = last_24_hours.copy()
             future_block['ds'] = future_block['ds'] + timedelta(days=day_offset)
             extended_df = pd.concat([extended_df, future_block], ignore_index=True)
@@ -319,11 +391,11 @@ def additive_model_with_regressors(
         # Generate predictions using extended dataframe
         predictions = model.predict(extended_df)
         # Skip only first hour to get all forecast predictions
-        predicted_values = predictions['yhat'].iloc[1:].to_numpy()
+        predicted_values = predictions['yhat1'].iloc[1:].to_numpy()
         
     except Exception as e:
         raise RuntimeError(
-            f"Prophet model with regressors fitting or prediction failed: {str(e)}"
+            f"NeuralProphet model with regressors fitting or prediction failed: {str(e)}"
         ) from e
     
     # Use perfect foresight template structure
@@ -331,8 +403,8 @@ def additive_model_with_regressors(
     num_forecasts = template.shape[0]
     
     # Fill each forecast date with corresponding predictions
-    for i in range(num_forecasts):
-        start_idx = i * HOURS_PER_DAY
+    for i in range(min(num_forecasts, len(predicted_values) // forecast_hours)):
+        start_idx = i * forecast_hours
         forecast_block = predicted_values[start_idx:start_idx + forecast_hours]
         
         # Handle edge case: pad if predictions are insufficient
@@ -346,10 +418,10 @@ def additive_model_with_regressors(
         
         # Apply predictions based on mode
         if use_perfect_foresight_first_day:
-            # Keep perfect foresight for hours 0-23, use Prophet for hours 24+
+            # Keep perfect foresight for hours 0-23, use NeuralProphet for hours 24+
             template.iloc[i, HOURS_PER_DAY:] = forecast_block[HOURS_PER_DAY:]
         else:
-            # Use Prophet predictions for all hours
+            # Use NeuralProphet predictions for all hours
             template.iloc[i, :] = forecast_block
     
     # Transpose back to standard format
@@ -357,10 +429,10 @@ def additive_model_with_regressors(
     
     # Save output
     try:
-        out_dir = generate_path([project, 'Market', 'Additive_Models'])
-        output_path = os.path.join(out_dir, 'Additive_model_with_regressors.csv')
+        out_dir = generate_path([project, 'Market', 'Autoregressive_NN'])
+        output_path = os.path.join(out_dir, 'Autoregressive_NN_with_regressors.csv')
         result.to_csv(output_path, index=True)
-        print(f"✓ Saved additive model (with regressors) to: {output_path}")
+        print(f"✓ Saved autoregressive NN model (with regressors) to: {output_path}")
         print(f"  Regressors used: {', '.join(features)}")
     except OSError as e:
         raise OSError(f"Failed to write output file: {str(e)}") from e
@@ -370,24 +442,24 @@ def additive_model_with_regressors(
 
 if __name__ == '__main__':
     """
-    Command-line interface for testing additive models.
+    Command-line interface for testing autoregressive NN models.
     
     Usage:
-        python additive_models.py Model_A
-        python additive_models.py Model_B
-        python additive_models.py Model_C
+        python autoregressive_NN_model.py Model_A
+        python autoregressive_NN_model.py Model_B
+        python autoregressive_NN_model.py Model_C
     
     This will:
     1. Load price data and features from Input_Spreadsheets/{project}.xlsx
     2. Generate perfect foresight forecast
-    3. Generate additive model without regressors
-    4. Generate additive model with regressors (if features are available)
+    3. Generate autoregressive NN model without regressors
+    4. Generate autoregressive NN model with regressors (if features are available)
     """
     # Parse command line arguments for project name
     project = parse_CLI_arguments()
     
     print("=" * 70)
-    print(f"ADDITIVE MODELS FORECAST GENERATION - {project}")
+    print(f"AUTOREGRESSIVE NEURAL NETWORK FORECAST GENERATION - {project}")
     print("=" * 70)
     
     try:
@@ -406,21 +478,28 @@ if __name__ == '__main__':
         num_forecasts = perfect_dict['DA-LMP'].shape[1]
         print(f"✓ Generated {num_forecasts} forecast dates")
         
-        # Generate additive model without regressors
-        print(f"\nGenerating additive model (no regressors)...")
-        result_no_reg = additive_model_no_regressors(
+        # Generate autoregressive NN model without regressors
+        print(f"\nGenerating autoregressive NN model (no regressors)...")
+        print(f"  Training neural network (n_lags=24, epochs=50)...")
+        result_no_reg = autoregressive_NN_no_regressors(
             price_df, perfect_dict, project, 
             num_forecast_days=7, 
-            use_perfect_foresight_first_day=True
+            use_perfect_foresight_first_day=True,
+            n_lags=24,
+            epochs=50
         )
         print(f"✓ Generated forecast shape: {result_no_reg.shape}")
         
-        # Generate additive model with regressors (if available)
-        print(f"\nGenerating additive model (with regressors)...")
-        result_with_reg = additive_model_with_regressors(
+        # Generate autoregressive NN model with regressors (if available)
+        print(f"\nGenerating autoregressive NN model (with regressors)...")
+        if features:
+            print(f"  Training neural network with regressors...")
+        result_with_reg = autoregressive_NN_with_regressors(
             price_df, perfect_dict, features, project,
             num_forecast_days=7,
-            use_perfect_foresight_first_day=True
+            use_perfect_foresight_first_day=True,
+            n_lags=24,
+            epochs=50
         )
         if result_with_reg is not None:
             print(f"✓ Generated forecast shape: {result_with_reg.shape}")
@@ -447,5 +526,7 @@ if __name__ == '__main__':
         print("=" * 70)
         
     except Exception as e:
-        print(f"\n❌ Error: {str(e)}")
+        print(f"\nError: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise

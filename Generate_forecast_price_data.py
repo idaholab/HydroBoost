@@ -1,14 +1,15 @@
 # Copyright 2025, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
 
-# Name of the input file located in the Input_Spreadsheets directory. Do not include the .xlsx extension here
-file_name = "Project_2"
-
 # Functions used to generate the forecast
+from Core_Models.Price_Forecasting.helper_functions import parse_CLI_arguments
 from Core_Models.Price_Forecasting.import_data import read_price_and_forecasting, read_water_flow, read_daily_water_flow, copy_Excel
 from Core_Models.Price_Forecasting.perfect_foresight_model import create_perfect_foresight_forecast
 from Core_Models.Price_Forecasting.mean_persistence_model import create_mean_persistence_forecast
 from Core_Models.Price_Forecasting.additive_models import additive_model_no_regressors, additive_model_with_regressors
 from Core_Models.Price_Forecasting.generate_figures import plot_forecast_model_errors
+
+# Parse command line arguments to get the input filename
+file_name = parse_CLI_arguments()
 
 # Price data and forecast features (if provided)
 price_df, forecast_features = read_price_and_forecasting(file_name)
