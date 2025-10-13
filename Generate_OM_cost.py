@@ -165,44 +165,6 @@ def get_gen_tech_hydro_ids(filepath: str) -> Set[str]:
         sys.exit(1)
 
 
-def get_gen_tech_bess_ids(filepath: str) -> Set[str]:
-    """
-    Extract all Tech_IDs from Gen Technology - BESS sheet.
-    
-    Args:
-        filepath (str): Path to Excel file
-        
-    Returns:
-        Set[str]: Set of BESS Tech_IDs
-    """
-    try:
-        wb = load_workbook(filepath, read_only=True, data_only=True)
-        
-        if "Gen Technology - BESS" not in wb.sheetnames:
-            wb.close()
-            return set()
-        
-        ws = wb["Gen Technology - BESS"]
-        tech_ids = set()
-        
-        # Find Tech_ID column (should be column A)
-        # Start from row 2 to skip header
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            tech_id = row[0]
-            if tech_id and isinstance(tech_id, str) and tech_id.strip():
-                tech_id = tech_id.strip()
-                # Skip header values like "Tech_ID"
-                if tech_id != "Tech_ID" and not tech_id.startswith("Tech_"):
-                    tech_ids.add(tech_id)
-        
-        wb.close()
-        return tech_ids
-        
-    except Exception as e:
-        print(f"Error reading Gen Technology - BESS: {str(e)}")
-        sys.exit(1)
-
-
 def get_om_cost_tech_ids(filepath: str) -> Set[str]:
     """
     Extract all Tech_IDs from O&M Cost sheet.
@@ -461,6 +423,9 @@ def calculate_hydro_generator_startup_shutdown_events(dispatch_data: pd.DataFram
     result_data['startup_event'] = 0
     result_data['shutdown_event'] = 0
     
+    # Threshold for binary state comparison (handles floating point errors)
+    threshold = 0.5
+    
     # Group by unit_id to handle multiple hydro generator units
     for unit_id in generator_units:
         unit_mask = dispatch_data['unit_id'] == unit_id
@@ -476,13 +441,16 @@ def calculate_hydro_generator_startup_shutdown_events(dispatch_data: pd.DataFram
         startup_events = np.zeros(len(unit_data))
         shutdown_events = np.zeros(len(unit_data))
         
-        # Detect transitions
+        # Detect transitions using threshold comparison
         for i in range(1, len(commitment)):
+            prev_state = 1 if commitment[i-1] > threshold else 0
+            curr_state = 1 if commitment[i] > threshold else 0
+            
             # Startup: 0 -> 1 transition
-            if commitment[i-1] == 0 and commitment[i] == 1:
+            if prev_state == 0 and curr_state == 1:
                 startup_events[i] = 1
             # Shutdown: 1 -> 0 transition  
-            elif commitment[i-1] == 1 and commitment[i] == 0:
+            elif prev_state == 1 and curr_state == 0:
                 shutdown_events[i] = 1
         
         # Update the result dataframe
@@ -709,6 +677,9 @@ def calculate_hydro_pump_startup_shutdown_events(dispatch_data: pd.DataFrame) ->
     if 'shutdown_event' not in result_data.columns:
         result_data['shutdown_event'] = 0
     
+    # Threshold for binary state comparison (handles floating point errors)
+    threshold = 0.5
+    
     # Group by unit_id to handle multiple pump units
     for unit_id in pump_units:
         unit_mask = dispatch_data['unit_id'] == unit_id
@@ -725,13 +696,16 @@ def calculate_hydro_pump_startup_shutdown_events(dispatch_data: pd.DataFrame) ->
             startup_events = np.zeros(len(unit_data))
             shutdown_events = np.zeros(len(unit_data))
             
-            # Detect transitions
+            # Detect transitions using threshold comparison
             for i in range(1, len(commitment)):
+                prev_state = 1 if commitment[i-1] > threshold else 0
+                curr_state = 1 if commitment[i] > threshold else 0
+                
                 # Startup: 0 -> 1 transition
-                if commitment[i-1] == 0 and commitment[i] == 1:
+                if prev_state == 0 and curr_state == 1:
                     startup_events[i] = 1
                 # Shutdown: 1 -> 0 transition  
-                elif commitment[i-1] == 1 and commitment[i] == 0:
+                elif prev_state == 1 and curr_state == 0:
                     shutdown_events[i] = 1
             
             # Update the result dataframe
@@ -1057,8 +1031,7 @@ def create_om_cost_csv(dispatch_data: pd.DataFrame, output_filepath: str, rough_
 
 
 def print_validation_results(model_type: str, hydro_valid: bool, hydro_missing: List[str],
-                            hydro_count: int, bess_valid: bool, bess_missing: List[str], 
-                            bess_count: int, reservoir_info: List[Tuple[str, float, float]]):
+                            hydro_count: int, reservoir_info: List[Tuple[str, float, float]]):
     """
     Print formatted validation results.
     
@@ -1067,9 +1040,6 @@ def print_validation_results(model_type: str, hydro_valid: bool, hydro_missing: 
         hydro_valid (bool): Whether hydro validation passed
         hydro_missing (List[str]): List of missing hydro Tech_IDs
         hydro_count (int): Total number of hydro Tech_IDs
-        bess_valid (bool): Whether BESS validation passed
-        bess_missing (List[str]): List of missing BESS Tech_IDs
-        bess_count (int): Total number of BESS Tech_IDs
         reservoir_info (List[Tuple[str, float, float]]): Reservoir information
     """
     print("\n" + "="*70)
@@ -1100,21 +1070,9 @@ def print_validation_results(model_type: str, hydro_valid: bool, hydro_missing: 
     else:
         print("○ Hydro: No Tech_IDs found in Gen Technology - Hydro sheet")
     
-    # BESS validation
-    if bess_count > 0:
-        if bess_valid:
-            print(f"✓ BESS: All {bess_count} Tech_ID(s) defined in O&M Cost sheet")
-        else:
-            print(f"✗ BESS: Missing O&M cost definitions for {len(bess_missing)} Tech_ID(s):")
-            for tech_id in bess_missing:
-                print(f"    - {tech_id}")
-    else:
-        print("○ BESS: No Tech_IDs found in Gen Technology - BESS sheet")
-    
     # Overall result
     print("-"*70)
-    all_valid = hydro_valid and bess_valid
-    if all_valid:
+    if hydro_valid:
         print("✓ ALL VALIDATIONS PASSED!")
     else:
         print("✗ VALIDATION FAILED - Please add missing Tech_IDs to O&M Cost sheet")
@@ -1147,25 +1105,22 @@ def main():
     
     # Extract Tech_IDs from Gen Technology sheets
     hydro_ids = get_gen_tech_hydro_ids(filepath)
-    bess_ids = get_gen_tech_bess_ids(filepath)
     
     # Extract Tech_IDs from O&M Cost sheet
     om_cost_ids = get_om_cost_tech_ids(filepath)
     
     # Validate
     hydro_valid, hydro_missing = validate_tech_ids(hydro_ids, om_cost_ids, "Hydro")
-    bess_valid, bess_missing = validate_tech_ids(bess_ids, om_cost_ids, "BESS")
     
     # Print validation results
     print_validation_results(
         model_type, 
         hydro_valid, hydro_missing, len(hydro_ids),
-        bess_valid, bess_missing, len(bess_ids),
         reservoir_info
     )
     
     # Exit if validation failed
-    if not (hydro_valid and bess_valid):
+    if not hydro_valid:
         sys.exit(1)
     
     # Extract O&M cost rates
