@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from datetime import timedelta
 from typing import Dict
-from helper_functions import generate_path
+from .helper_functions import generate_path
 
 HOURS_PER_DAY = 24
 
@@ -176,8 +176,8 @@ if __name__ == "__main__":
     2. Generate perfect foresight forecast
     """
     
-    from import_data import read_price_and_forecasting
-    from helper_functions import parse_CLI_arguments
+    from .import_data import read_price_and_forecasting
+    from .helper_functions import parse_CLI_arguments
     
     # Use CLI to get project name
     project = parse_CLI_arguments()

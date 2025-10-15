@@ -30,7 +30,7 @@ price_df, forecast_features = read_price_and_forecasting(file_name)
 # Perfect foresight and mean persistence forecast
 # Dicts with keys: DA-LMP, Regulation Up, Regulation Down, Spinning Reserve
 perfect_foresight_forecast_dict = create_perfect_foresight_forecast(price_df, file_name)
-mean_persistence_forecast_dict = create_mean_persistence_forecast(perfect_foresight_forecast_dict, file_name, num_days=7)
+mean_persistence_forecast_dict = create_mean_persistence_forecast(perfect_foresight_forecast_dict, file_name, num_mean_persistence_days=7)
 
 # Add the additive forecast models. Note: you need regressors in your inputs spreadsheet to run the second model
 additive_no_regressors_forecast = (

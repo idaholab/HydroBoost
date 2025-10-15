@@ -26,9 +26,9 @@ np.float_ = np.float64
 
 from prophet import Prophet
 
-from helper_functions import generate_path, parse_CLI_arguments
-from import_data import read_price_and_forecasting
-from perfect_foresight_model import create_perfect_foresight_forecast
+from .helper_functions import generate_path, parse_CLI_arguments
+from .import_data import read_price_and_forecasting
+from .perfect_foresight_model import create_perfect_foresight_forecast
 
 # Module-level constants
 HOURS_PER_DAY = 24

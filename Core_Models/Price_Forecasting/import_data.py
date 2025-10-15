@@ -2,8 +2,9 @@
 
 
 import os
+import shutil
 import pandas as pd
-from helper_functions import generate_path
+from .helper_functions import generate_path
 
 # 1) Directory of this script:
 #    C:\Users\agrimaldi\a-leaf-dev_HydroBoost_AG_version\Core_Models\Price_Forecasting
@@ -133,6 +134,26 @@ def read_RES_profiles(file_name):
     print(f"→ RES profiles saved to: {out_dir}")
 
     return df
+
+
+def copy_Excel(file_name):
+    """
+    Copy the input Excel file from:
+      <PROJECT_ROOT>/Input_Spreadsheets/{file_name}.xlsx
+    to:
+      generated_data/{file_name}/{file_name}.xlsx
+
+    This is needed by the Julia optimization which requires additional
+    information from the input Excel file.
+    """
+    xlsx_path = os.path.join(INPUT_DIR, f"{file_name}.xlsx")
+    if not os.path.isfile(xlsx_path):
+        raise FileNotFoundError(f"Excel file not found: {xlsx_path}")
+
+    out_dir = generate_path([file_name])
+    dest_path = os.path.join(out_dir, f"{file_name}.xlsx")
+    shutil.copy2(xlsx_path, dest_path)
+    print(f"→ Excel file copied to: {dest_path}")
 
 
 if __name__ == "__main__":

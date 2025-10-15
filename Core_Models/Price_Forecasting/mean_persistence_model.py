@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import numpy as np
 from typing import Dict
-from helper_functions import generate_path
+from .helper_functions import generate_path
 
 
 HOURS_PER_DAY = 24
@@ -171,9 +171,9 @@ if __name__ == "__main__":
     3. Generate mean persistence model
     """
     
-    from import_data import read_price_and_forecasting
-    from perfect_foresight_model import create_perfect_foresight_forecast
-    from helper_functions import parse_CLI_arguments
+    from .import_data import read_price_and_forecasting
+    from .perfect_foresight_model import create_perfect_foresight_forecast
+    from .helper_functions import parse_CLI_arguments
     
     # Use CLI to get project name
     project = parse_CLI_arguments()
