@@ -140,8 +140,8 @@ def create_mean_persistence_forecast(
     # Save CSVs with error handling
     output_files = {
         "DA-LMP": "DA_LMP.csv",
-        "Regulation Up": "Delta_RU.csv",
-        "Regulation Down": "Delta_RD.csv",
+        "Regulation Up": "Regulation_up.csv",
+        "Regulation Down": "Regulation_down.csv",
         "Spinning Reserve": "Spin.csv",
     }
     

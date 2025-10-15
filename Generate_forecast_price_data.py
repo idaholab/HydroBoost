@@ -6,12 +6,12 @@
 # NOTE: Perfect Foresight and Mean Persistence models are 
 #       always run by default as they are required baselines.
 # ============================================================
-RUN_ADDITIVE_NO_REGRESSORS = True
-RUN_ADDITIVE_WITH_REGRESSORS = True
-RUN_AUTOREGRESSIVE_NN_NO_REGRESSORS = True
-RUN_AUTOREGRESSIVE_NN_WITH_REGRESSORS = True
-RUN_RANDOM_FOREST_NO_REGRESSORS = True
-RUN_RANDOM_FOREST_WITH_REGRESSORS = True
+RUN_ADDITIVE_NO_REGRESSORS = False
+RUN_ADDITIVE_WITH_REGRESSORS = False
+RUN_AUTOREGRESSIVE_NN_NO_REGRESSORS = False
+RUN_AUTOREGRESSIVE_NN_WITH_REGRESSORS = False
+RUN_RANDOM_FOREST_NO_REGRESSORS = False
+RUN_RANDOM_FOREST_WITH_REGRESSORS = False
 
 # Functions used to generate the forecast
 from Core_Models.Price_Forecasting.helper_functions import parse_CLI_arguments
