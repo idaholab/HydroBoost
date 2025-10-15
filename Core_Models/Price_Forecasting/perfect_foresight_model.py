@@ -146,8 +146,8 @@ def create_perfect_foresight_forecast(
     # Save CSVs with error handling
     output_files = {
         "DA-LMP": "DA_LMP.csv",
-        "Regulation Up": "Regulation_up.csv",
-        "Regulation Down": "Regulation_down.csv",
+        "Regulation Up": "Delta_RU.csv",
+        "Regulation Down": "Delta_RD.csv",
         "Spinning Reserve": "Spin.csv",
     }
     

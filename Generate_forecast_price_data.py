@@ -2,6 +2,9 @@
 
 # ============================================================
 # SELECT MODELS TO RUN
+# 
+# NOTE: Perfect Foresight and Mean Persistence models are 
+#       always run by default as they are required baselines.
 # ============================================================
 RUN_ADDITIVE_NO_REGRESSORS = True
 RUN_ADDITIVE_WITH_REGRESSORS = True
