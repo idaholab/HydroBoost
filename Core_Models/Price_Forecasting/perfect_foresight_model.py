@@ -87,7 +87,7 @@ def create_perfect_foresight_forecast(
     forecast_hours = num_forecast_days * HOURS_PER_DAY
 
     # Validate input DataFrame has required columns
-    required_columns = ["DA-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve"]
+    required_columns = ["DA-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve", "Delta RU", "Delta RD"]
     missing_cols = set(required_columns) - set(price_df.columns)
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
@@ -134,6 +134,8 @@ def create_perfect_foresight_forecast(
         "Regulation Up": get_forecast(empty.copy(), "Regulation Up"),
         "Regulation Down": get_forecast(empty.copy(), "Regulation Down"),
         "Spinning Reserve": get_forecast(empty.copy(), "Spinning Reserve"),
+        "Delta RU": get_forecast(empty.copy(), "Delta RU"),
+        "Delta RD": get_forecast(empty.copy(), "Delta RD"),
     }
 
     # Convert index to string dates for CSV output
@@ -149,6 +151,8 @@ def create_perfect_foresight_forecast(
         "Regulation Up": "Regulation_up.csv",
         "Regulation Down": "Regulation_down.csv",
         "Spinning Reserve": "Spin.csv",
+        "Delta RU": "Delta_RU.csv",
+        "Delta RD": "Delta_RD.csv",
     }
     
     try:

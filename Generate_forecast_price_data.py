@@ -15,7 +15,7 @@ RUN_RANDOM_FOREST_WITH_REGRESSORS = False
 
 # Functions used to generate the forecast
 from Core_Models.Price_Forecasting.helper_functions import parse_CLI_arguments
-from Core_Models.Price_Forecasting.import_data import read_price_and_forecasting, read_water_flow, read_daily_water_flow, copy_Excel
+from Core_Models.Price_Forecasting.import_data import read_price_and_forecasting, read_water_flow, read_daily_water_flow, read_RES_profiles, copy_Excel
 from Core_Models.Price_Forecasting.perfect_foresight_model import create_perfect_foresight_forecast
 from Core_Models.Price_Forecasting.mean_persistence_model import create_mean_persistence_forecast
 from Core_Models.Price_Forecasting.additive_models import additive_model_no_regressors, additive_model_with_regressors
@@ -68,6 +68,9 @@ random_forest_with_regressors_forecast = (
 # Add water flow data to the generated_data directory
 hourly_water = read_water_flow(file_name)
 daily_water = read_daily_water_flow(file_name)
+
+# Add RES profiles to the generated_data directory
+res_profiles = read_RES_profiles(file_name)
 
 # The Julia optimization needs additional information from the input Excel file so we copy it into the dirctory
 copy_Excel(file_name)

@@ -85,7 +85,7 @@ def create_mean_persistence_forecast(
       perfect foresight for first day)
     """
     # Validate input parameters
-    required_keys = ["DA-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve"]
+    required_keys = ["DA-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve", "Delta RU", "Delta RD"]
     missing_keys = set(required_keys) - set(perfect_foresight_forecast_dict.keys())
     if missing_keys:
         raise ValueError(f"Missing required keys in perfect_foresight_forecast_dict: {missing_keys}")
@@ -132,6 +132,8 @@ def create_mean_persistence_forecast(
         "Regulation Up": get_forecast(perfect_foresight_forecast_dict["Regulation Up"].T.copy()),
         "Regulation Down": get_forecast(perfect_foresight_forecast_dict["Regulation Down"].T.copy()),
         "Spinning Reserve": get_forecast(perfect_foresight_forecast_dict["Spinning Reserve"].T.copy()),
+        "Delta RU": get_forecast(perfect_foresight_forecast_dict["Delta RU"].T.copy()),
+        "Delta RD": get_forecast(perfect_foresight_forecast_dict["Delta RD"].T.copy()),
     }
 
     # Prepare output directory
@@ -143,6 +145,8 @@ def create_mean_persistence_forecast(
         "Regulation Up": "Regulation_up.csv",
         "Regulation Down": "Regulation_down.csv",
         "Spinning Reserve": "Spin.csv",
+        "Delta RU": "Delta_RU.csv",
+        "Delta RD": "Delta_RD.csv",
     }
     
     try:
