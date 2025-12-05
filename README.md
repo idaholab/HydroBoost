@@ -45,7 +45,7 @@ pip install -r requirements.txt
 
 Now you can generate the forecasting price data needed for the optimization. This is done with the command line using 
 ```
-python Generate_forecast_price_data.py
+python Generate_forecast_price_data.py Model_name
 ```
 The forecast data will be generated and the results will be located in the Core_Models/HydroBoost/generated_data/ directory. The HydroBoost Julia optimization solver will use these files.
 
