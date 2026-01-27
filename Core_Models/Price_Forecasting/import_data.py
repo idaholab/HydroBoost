@@ -4,7 +4,12 @@
 import os
 import shutil
 import pandas as pd
-from helper_functions import generate_path
+
+# Make it runnable with the IDE "Run" button (works both as package and as script)
+try:
+    from .helper_functions import generate_path
+except ImportError:
+    from helper_functions import generate_path
 
 # 1) Directory of this script:
 #    C:\Users\agrimaldi\a-leaf-dev_HydroBoost_AG_version\Core_Models\Price_Forecasting
