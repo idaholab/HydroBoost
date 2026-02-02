@@ -15,35 +15,7 @@ def plot_forecast_model_errors(file_name,
                                autoregressive_NN_with_regressors_forecast=None,
                                random_forest_no_regressors_forecast=None,
                                random_forest_with_regressors_forecast=None):
-    """
-    Generate heatmap comparison of forecast errors for all models.
-    
-    Parameters
-    ----------
-    file_name : str
-        Project name (e.g., 'Model_A') for output directory
-    perfect_foresight_forecast_dict : dict
-        Dictionary containing perfect foresight forecasts with 'DA-LMP' key
-    mean_persistence_forecast_dict : dict
-        Dictionary containing mean persistence forecasts with 'DA-LMP' key
-    additive_no_regressor_forecast : pd.DataFrame, optional
-        Additive model forecast without regressors
-    additive_with_regressors_forecast : pd.DataFrame, optional
-        Additive model forecast with regressors
-    autoregressive_NN_no_regressors_forecast : pd.DataFrame, optional
-        Autoregressive NN forecast without regressors
-    autoregressive_NN_with_regressors_forecast : pd.DataFrame, optional
-        Autoregressive NN forecast with regressors
-    random_forest_no_regressors_forecast : pd.DataFrame, optional
-        Random Forest forecast without regressors
-    random_forest_with_regressors_forecast : pd.DataFrame, optional
-        Random Forest forecast with regressors
-    
-    Returns
-    -------
-    plotly.graph_objects.Figure
-        Plotly figure with forecast error heatmaps
-    """
+    """Generate heatmap comparison of forecast errors for all models."""
     error = dict()
     max_error = 0
 

@@ -1,18 +1,8 @@
 # Copyright 2025, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
 
 """
-Random Forest forecasting models for DA-LMP price forecasting.
-
-This module provides two Random Forest-based forecasting approaches:
-1. No regressors: Random Forest using only engineered time series features
-2. With regressors: Random Forest with additional external features (e.g., temperature, demand)
-
-Both models use direct multi-output prediction (entire horizon in one call) for maximum speed.
-
-Both models generate forecasts for a configurable number of days (default: 7 days, 168 hours).
-When use_perfect_foresight_first_day=True (default):
-- First day (hours 0-23): Perfect foresight (actual values)
-- Remaining days: Random Forest predictions
+Random Forest forecasts for DA-LMP.
+Includes no-regressor and regressor variants.
 """
 
 import os
@@ -67,23 +57,7 @@ def _rolling_stats(series: pd.Series, window: int = 24) -> pd.DataFrame:
 
 
 def _build_direct_targets(series: pd.Series, start: int, horizon: int) -> pd.DataFrame:
-    """
-    Build target matrix for direct multi-output forecasting.
-    
-    Parameters
-    ----------
-    series : pd.Series
-        Target time series
-    start : int
-        Starting hour offset (e.g., 24 for perfect foresight first day)
-    horizon : int
-        Number of hours to forecast
-        
-    Returns
-    -------
-    pd.DataFrame
-        Target matrix with columns for each forecast hour
-    """
+    """Build target matrix for direct multi-output forecasting."""
     cols = {}
     for h in range(start, start + horizon):
         cols[f"y+h{h}"] = series.shift(-h)
@@ -116,51 +90,9 @@ def random_forest_no_regressors(
     max_depth: Optional[int] = 24
 ) -> pd.DataFrame:
     """
-    Create DA-LMP forecast using direct multi-output Random Forest.
-    
-    This optimized version trains a single model that predicts the entire forecast
-    horizon in one call, eliminating the need for recursive per-hour prediction.
-    
-    Features used:
-    - Lagged values (previous n_lags hours)
-    - Time features (hour, day of week, month, day of year)
-    - Rolling statistics (24-hour mean and std)
-    
-    Parameters
-    ----------
-    price_df : pd.DataFrame
-        Historical price data with DatetimeIndex and columns including 'DA-LMP'.
-    perfect_dict : Dict[str, pd.DataFrame]
-        Dictionary of perfect foresight forecasts with keys including 'DA-LMP'.
-        Used as a template for output structure.
-    project : str
-        Project name (e.g., 'Model_A') for determining output file path.
-    num_forecast_days : int, optional
-        Number of days in forecast window (default: 7, resulting in 168 hours).
-    use_perfect_foresight_first_day : bool, optional
-        If True (default), hours 0-23 use perfect foresight values.
-    n_lags : int, optional
-        Number of lagged observations to use as features (default: 24).
-    n_estimators : int, optional
-        Number of trees in the Random Forest (default: 200).
-    max_depth : Optional[int], optional
-        Maximum depth of trees (default: 24 for speed/accuracy balance).
-    
-    Returns
-    -------
-    pd.DataFrame
-        Forecast DataFrame with hours as rows and dates as columns.
-    
-    Raises
-    ------
-    KeyError
-        If 'DA-LMP' column is missing from price_df or perfect_dict.
-    ValueError
-        If price_df has insufficient data.
-    RuntimeError
-        If Random Forest model fails to fit or predict.
-    OSError
-        If output file cannot be written.
+    Random Forest forecast without regressors.
+
+    Returns a DataFrame with hours as rows and forecast start dates as columns.
     """
     # Input validation
     if 'DA-LMP' not in price_df.columns:
@@ -289,56 +221,10 @@ def random_forest_with_regressors(
     max_depth: Optional[int] = 24
 ) -> Optional[pd.DataFrame]:
     """
-    Create DA-LMP forecast using direct multi-output Random Forest with external regressors.
-    
-    This optimized version builds horizon-specific regressor features by cycling the
-    last 24 hours of regressor values, allowing the model to learn hour-specific effects
-    while maintaining fast single-call prediction per forecast date.
-    
-    Features used:
-    - Lagged price values (previous n_lags hours)
-    - Time features (hour, day of week, month, day of year)
-    - Rolling statistics (24-hour mean and std)
-    - Horizon-specific regressor values (cycled from last 24 hours)
-    
-    Parameters
-    ----------
-    price_df : pd.DataFrame
-        Historical price data with DatetimeIndex and columns including 'DA-LMP'
-        and all features specified in the features list.
-    perfect_dict : Dict[str, pd.DataFrame]
-        Dictionary of perfect foresight forecasts.
-    features : Optional[List[str]]
-        List of column names in price_df to use as external regressors.
-        If None or empty, the function returns None.
-    project : str
-        Project name (e.g., 'Model_A') for determining output file path.
-    num_forecast_days : int, optional
-        Number of days in forecast window (default: 7).
-    use_perfect_foresight_first_day : bool, optional
-        If True (default), hours 0-23 use perfect foresight values.
-    n_lags : int, optional
-        Number of lagged observations for features (default: 24).
-    n_estimators : int, optional
-        Number of trees in the Random Forest (default: 200).
-    max_depth : Optional[int], optional
-        Maximum depth of trees (default: 24).
-    
-    Returns
-    -------
-    Optional[pd.DataFrame]
-        Forecast DataFrame, or None if no features provided.
-    
-    Raises
-    ------
-    KeyError
-        If required columns are missing.
-    ValueError
-        If price_df has insufficient data.
-    RuntimeError
-        If Random Forest model fails.
-    OSError
-        If output file cannot be written.
+    Random Forest forecast with regressors.
+
+    Returns a DataFrame with hours as rows and forecast start dates as columns,
+    or None if no features are provided.
     """
     # Handle case with no regressors
     if not features:
@@ -379,12 +265,7 @@ def random_forest_with_regressors(
         # For each regressor and each horizon step, create feature using
         # last 24h pattern indexed by hour-of-day
         def make_horizon_reg_block(df: pd.DataFrame, reg_name: str) -> pd.DataFrame:
-            """
-            Create horizon-specific regressor features using 24h cyclic pattern.
-            
-            For each origin time t and horizon step h, the regressor value is taken
-            from the last 24 hours based on the hour-of-day of (t+h).
-            """
+            """Create horizon-specific regressor features using a 24h cycle."""
             reg = df[reg_name]
             idx = df.index
             origin_hour = idx.hour.values  # 0..23

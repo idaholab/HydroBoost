@@ -1,24 +1,7 @@
 # Copyright 2025, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
 
 """
-Comprehensive comparison script for all DA-LMP forecasting models.
-
-This script loads forecasts from all models and compares them against perfect foresight
-to evaluate forecast accuracy using Mean Absolute Error (MAE) and other statistics.
-
-Models compared:
-1. Mean Persistence
-2. Additive Model (no regressors)
-3. Additive Model (with regressors)
-4. Autoregressive NN (no regressors)
-5. Autoregressive NN (with regressors)
-6. Random Forest (no regressors)
-7. Random Forest (with regressors)
-
-Usage:
-    python compare_all_models.py Model_A
-    python compare_all_models.py Model_B
-    python compare_all_models.py Model_C
+Compare forecast models against perfect foresight.
 """
 
 import os
@@ -39,28 +22,7 @@ HOURS_PER_DAY = 24
 
 
 def load_forecast(project: str, model_path: str, model_name: str) -> pd.DataFrame:
-    """
-    Load a forecast CSV file.
-    
-    Parameters
-    ----------
-    project : str
-        Project name (e.g., 'Model_A')
-    model_path : str
-        Relative path to the forecast file within generated_data/{project}/Market/
-    model_name : str
-        Display name for the model (used in error messages)
-    
-    Returns
-    -------
-    pd.DataFrame
-        Forecast dataframe with hours as index and dates as columns
-        
-    Raises
-    ------
-    FileNotFoundError
-        If the forecast file doesn't exist
-    """
+    """Load a forecast CSV file."""
     base_dir = repo_path("Core_Models", "HydroBoost", "generated_data", project, "Market")
     full_path = os.path.join(base_dir, model_path)
     
@@ -80,32 +42,7 @@ def compute_statistics(
     start_hour: int = 24,
     end_hour: int = 168
 ) -> Dict[str, float]:
-    """
-    Compute forecast statistics vs perfect foresight.
-    
-    Parameters
-    ----------
-    forecast : pd.DataFrame
-        Forecast values
-    perfect_foresight : pd.DataFrame
-        Perfect foresight (ground truth) values
-    start_hour : int, optional
-        Starting hour for comparison (default: 24, after first day)
-    end_hour : int, optional
-        Ending hour for comparison (default: 168, exclusive end for hours 24-167)
-    
-    Returns
-    -------
-    Dict[str, float]
-        Dictionary containing:
-        - 'mean': Mean of forecast values
-        - 'std': Standard deviation of forecast values
-        - 'min': Minimum forecast value
-        - 'max': Maximum forecast value
-        - 'mae': Mean Absolute Error vs perfect foresight
-        - 'rmse': Root Mean Squared Error vs perfect foresight
-        - 'mape': Mean Absolute Percentage Error vs perfect foresight
-    """
+    """Compute summary statistics vs perfect foresight."""
     # Extract comparison window (hours 24-167 across all dates)
     # Use iloc for integer-based indexing (row 24 to row 167 inclusive)
     forecast_values = forecast.iloc[start_hour:end_hour].values.flatten()
@@ -134,14 +71,7 @@ def compute_statistics(
 
 
 def print_comparison_table(results: Dict[str, Dict[str, float]]) -> None:
-    """
-    Print a formatted comparison table of all model statistics.
-    
-    Parameters
-    ----------
-    results : Dict[str, Dict[str, float]]
-        Dictionary mapping model names to their statistics
-    """
+    """Print a formatted comparison table."""
     print("\n" + "=" * 100)
     print("FORECAST MODEL COMPARISON - Hours 24-167 (Days 2-7)")
     print("=" * 100)
@@ -189,22 +119,7 @@ def print_detailed_comparison(
     model2: pd.DataFrame,
     perfect_foresight: pd.DataFrame
 ) -> None:
-    """
-    Print detailed comparison between two specific models.
-    
-    Parameters
-    ----------
-    model1_name : str
-        Name of first model
-    model1 : pd.DataFrame
-        First model forecast
-    model2_name : str
-        Name of second model
-    model2 : pd.DataFrame
-        Second model forecast
-    perfect_foresight : pd.DataFrame
-        Perfect foresight (ground truth)
-    """
+    """Print a detailed comparison between two models."""
     print(f"\n" + "=" * 100)
     print(f"DETAILED COMPARISON: {model1_name} vs {model2_name}")
     print("=" * 100)
