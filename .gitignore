@@ -12,5 +12,10 @@ env/
 build/
 dist/
 
+# PyTorch Lightning logs (NeuralProphet training logs)
+lightning_logs/
 
 *.log
+
+*.ipynb
+Compare_forecasting_errors.py

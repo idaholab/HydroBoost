@@ -96,10 +96,16 @@ def create_perfect_foresight_forecast(
     forecast_hours = num_forecast_days * HOURS_PER_DAY
 
     # Validate input DataFrame has required columns
-    required_columns = ["DA-LMP", "RT-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve", "Delta RU", "Delta RD"]
+    required_columns = ["DA-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve", 
+                        "Delta RU", "Delta RD"]
     missing_cols = set(required_columns) - set(price_df.columns)
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
+    
+    # Check if RT-LMP is available (needed for Model C)
+    has_rt_lmp = "RT-LMP" in price_df.columns
+    if not has_rt_lmp:
+        print("WARNING: RT-LMP not found in spreadsheet. Using DA-LMP as proxy.")
     
     df = price_df.copy()
 
@@ -140,13 +146,19 @@ def create_perfect_foresight_forecast(
     
     forecasts = {
         "DA-LMP": get_forecast(empty.copy(), "DA-LMP"),
-        "RT-LMP": get_forecast(empty.copy(), "RT-LMP"),
         "Regulation Up": get_forecast(empty.copy(), "Regulation Up"),
         "Regulation Down": get_forecast(empty.copy(), "Regulation Down"),
         "Spinning Reserve": get_forecast(empty.copy(), "Spinning Reserve"),
         "Delta RU": get_forecast(empty.copy(), "Delta RU"),
         "Delta RD": get_forecast(empty.copy(), "Delta RD"),
     }
+    
+    # Add RT-LMP (use actual if available, otherwise use DA-LMP as proxy)
+    if has_rt_lmp:
+        forecasts["RT-LMP"] = get_forecast(empty.copy(), "RT-LMP")
+    else:
+        # Fallback: Use DA-LMP as proxy for RT-LMP (Model C requires this)
+        forecasts["RT-LMP"] = forecasts["DA-LMP"].copy()
 
     # Convert index to string dates for CSV output
     for fc in forecasts.values():
@@ -158,7 +170,7 @@ def create_perfect_foresight_forecast(
     # Save CSVs with error handling
     output_files = {
         "DA-LMP": "DA_LMP.csv",
-        "RT-LMP": "RT_LMP.csv",
+        "RT-LMP": "RT_LMP.csv",  # Now always generated (Model C requires this)
         "Regulation Up": "Regulation_up.csv",
         "Regulation Down": "Regulation_down.csv",
         "Spinning Reserve": "Spin.csv",

@@ -26,6 +26,10 @@ from .helper_functions import generate_path, parse_CLI_arguments
 from .import_data import read_price_and_forecasting
 from .perfect_foresight_model import create_perfect_foresight_forecast
 
+# NumPy 2.0 compatibility: np.NaN was removed, use np.nan instead
+if not hasattr(np, 'NaN'):
+    np.NaN = np.nan
+
 # Module-level constants
 HOURS_PER_DAY = 24
 

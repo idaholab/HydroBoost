@@ -87,11 +87,17 @@ def create_mean_persistence_forecast(
         - Delta_RU.csv
         - Delta_RD.csv
     """
-    # Validate input parameters (added RT-LMP)
-    required_keys = ["DA-LMP", "RT-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve", "Delta RU", "Delta RD"]
+    # Validate input parameters
+    required_keys = ["DA-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve", 
+                     "Delta RU", "Delta RD"]
     missing_keys = set(required_keys) - set(perfect_foresight_forecast_dict.keys())
     if missing_keys:
         raise ValueError(f"Missing required keys in perfect_foresight_forecast_dict: {missing_keys}")
+    
+    # Check if RT-LMP is available (needed for Model C)
+    has_rt_lmp = "RT-LMP" in perfect_foresight_forecast_dict
+    if not has_rt_lmp:
+        print("WARNING: RT-LMP not found in perfect foresight dict. Using DA-LMP as proxy.")
     
     if num_forecast_days < 1:
         raise ValueError(f"num_forecast_days must be at least 1, got {num_forecast_days}")
@@ -128,24 +134,30 @@ def create_mean_persistence_forecast(
         
         return df_result.T
 
-    # Build forecasts for each price type (added RT-LMP)
+    # Build forecasts for each price type
     forecasts = {
         "DA-LMP": get_forecast(perfect_foresight_forecast_dict["DA-LMP"].T.copy()),
-        "RT-LMP": get_forecast(perfect_foresight_forecast_dict["RT-LMP"].T.copy()),
         "Regulation Up": get_forecast(perfect_foresight_forecast_dict["Regulation Up"].T.copy()),
         "Regulation Down": get_forecast(perfect_foresight_forecast_dict["Regulation Down"].T.copy()),
         "Spinning Reserve": get_forecast(perfect_foresight_forecast_dict["Spinning Reserve"].T.copy()),
         "Delta RU": get_forecast(perfect_foresight_forecast_dict["Delta RU"].T.copy()),
         "Delta RD": get_forecast(perfect_foresight_forecast_dict["Delta RD"].T.copy()),
     }
+    
+    # Add RT-LMP (use actual if available, otherwise use DA-LMP as proxy)
+    if has_rt_lmp:
+        forecasts["RT-LMP"] = get_forecast(perfect_foresight_forecast_dict["RT-LMP"].T.copy())
+    else:
+        # Fallback: Use DA-LMP as proxy for RT-LMP (Model C requires this)
+        forecasts["RT-LMP"] = forecasts["DA-LMP"].copy()
 
     # Prepare output directory
     out_dir = generate_path([file_name, "Market", "Mean_persistence"])
 
-    # Save CSVs with error handling (added RT_LMP.csv)
+    # Save CSVs with error handling
     output_files = {
         "DA-LMP": "DA_LMP.csv",
-        "RT-LMP": "RT_LMP.csv",
+        "RT-LMP": "RT_LMP.csv",  # Now always generated (Model C requires this)
         "Regulation Up": "Regulation_up.csv",
         "Regulation Down": "Regulation_down.csv",
         "Spinning Reserve": "Spin.csv",
