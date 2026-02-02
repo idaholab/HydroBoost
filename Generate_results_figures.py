@@ -5,16 +5,26 @@ import plotly.graph_objects as go
 import plotly.express as px
 import os
 
-# Select the project folder in teh Simulation_Results directory
+# Select the project folder in the Simulation_Results directory
 project = "Project_1"
+
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+
+def repo_path(*parts: str) -> str:
+    return os.path.join(REPO_ROOT, *parts)
 
 ##############################################
 # Import and format the data
 ##############################################
 
-df_hydro = pd.read_csv(os.path.join("Simulation_Results", project, f"ALEAF_HydroBoost_{project}__hydro_dispatch.csv"))
-df_plant = pd.read_csv(os.path.join("Simulation_Results", project, f"ALEAF_HydroBoost_{project}__plant_dispatch.csv"))
-df_storage = pd.read_csv(os.path.join("Simulation_Results", project, f"ALEAF_HydroBoost_{project}__storage_dispatch.csv"))
+result_dir = repo_path("Simulation_Results", project)
+figures_dir = os.path.join(result_dir, "Figures")
+os.makedirs(figures_dir, exist_ok=True)
+
+df_hydro = pd.read_csv(os.path.join(result_dir, f"ALEAF_HydroBoost_{project}__hydro_dispatch.csv"))
+df_plant = pd.read_csv(os.path.join(result_dir, f"ALEAF_HydroBoost_{project}__plant_dispatch.csv"))
+df_storage = pd.read_csv(os.path.join(result_dir, f"ALEAF_HydroBoost_{project}__storage_dispatch.csv"))
 
 dates = pd.date_range(start='2025-01-01', periods=8760, freq='h')
 
@@ -102,7 +112,7 @@ colors = {
 print(df.columns)
 
 fig = px.line(df.drop(columns=["unit_id", "UnitGroup", "Unit_Category", "Unit_Type"]))
-fig.write_html(f"Simulation_Results/{project}/Figures/All_data.html")
+fig.write_html(os.path.join(figures_dir, "All_data.html"))
 
 
 ###########################################
@@ -432,9 +442,7 @@ table_fig.update_layout(
 
 
 
-directory = f"Simulation_Results/{project}/Figures"
+os.makedirs(figures_dir, exist_ok=True)
 
-os.makedirs(directory, exist_ok=True)
-
-fig.write_html(f"Simulation_Results/{project}/Figures/Monthly_Revenue.html")
-table_fig.write_html(f"Simulation_Results/{project}/Figures/Monthly_Summary_Table.html")
+fig.write_html(os.path.join(figures_dir, "Monthly_Revenue.html"))
+table_fig.write_html(os.path.join(figures_dir, "Monthly_Summary_Table.html"))

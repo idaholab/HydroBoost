@@ -25,6 +25,13 @@ import numpy as np
 from typing import Dict, Tuple
 from .helper_functions import parse_CLI_arguments
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir, os.pardir))
+
+
+def repo_path(*parts: str) -> str:
+    return os.path.join(REPO_ROOT, *parts)
+
 # Module-level constants
 HOURS_PER_DAY = 24
 
@@ -52,7 +59,7 @@ def load_forecast(project: str, model_path: str, model_name: str) -> pd.DataFram
     FileNotFoundError
         If the forecast file doesn't exist
     """
-    base_dir = f"../../Core_Models/HydroBoost/generated_data/{project}/Market"
+    base_dir = repo_path("Core_Models", "HydroBoost", "generated_data", project, "Market")
     full_path = os.path.join(base_dir, model_path)
     
     if not os.path.exists(full_path):

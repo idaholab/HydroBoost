@@ -22,6 +22,12 @@ from openpyxl import load_workbook
 from typing import Set, Tuple, List, Dict
 from Core_Models.Price_Forecasting.helper_functions import parse_CLI_arguments
 
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+
+def repo_path(*parts: str) -> str:
+    return os.path.join(REPO_ROOT, *parts)
+
 
 def construct_filepath(filename: str) -> str:
     """
@@ -33,7 +39,7 @@ def construct_filepath(filename: str) -> str:
     Returns:
         str: Full filepath (e.g., 'Input_Spreadsheets/Model_A.xlsx')
     """
-    return os.path.join("Input_Spreadsheets", f"{filename}.xlsx")
+    return repo_path("Input_Spreadsheets", f"{filename}.xlsx")
 
 
 def get_reservoir_info(filepath: str) -> List[Tuple[str, float, float]]:
@@ -377,7 +383,7 @@ def construct_dispatch_filepath(filename: str) -> str:
     Returns:
         str: Full dispatch CSV filepath
     """
-    return os.path.join("Simulation_Results", filename, f"ALEAF_HydroBoost_{filename}__hydro_dispatch.csv")
+    return repo_path("Simulation_Results", filename, f"ALEAF_HydroBoost_{filename}__hydro_dispatch.csv")
 
 
 def import_hydro_dispatch_data(filepath: str) -> pd.DataFrame:
@@ -1217,7 +1223,7 @@ def main():
                 display_per_hydro_pump_cost_summary(per_pump_summary, model_type)
         
         # Create separate O&M cost CSV file
-        om_cost_filepath = os.path.join("Simulation_Results", filename, f"ALEAF_HydroBoost_{filename}__OM_cost.csv")
+        om_cost_filepath = repo_path("Simulation_Results", filename, f"ALEAF_HydroBoost_{filename}__OM_cost.csv")
         print(f"\n  Creating O&M cost CSV file: {om_cost_filepath}")
         create_om_cost_csv(dispatch_data, om_cost_filepath, rough_zone_flag)
         
