@@ -12,6 +12,8 @@ Models compared:
 3. Additive Model (with regressors)
 4. Autoregressive NN (no regressors)
 5. Autoregressive NN (with regressors)
+6. Random Forest (no regressors)
+7. Random Forest (with regressors)
 
 Usage:
     python compare_all_models.py Model_A
@@ -404,6 +406,7 @@ if __name__ == '__main__':
         print("  2. python mean_persistence_model.py {project}")
         print("  3. python additive_models.py {project}")
         print("  4. python autoregressive_NN_model.py {project}")
+        print("  5. python random_forest_model.py {project}")
     except Exception as e:
         print(f"\nUnexpected error: {e}")
         import traceback
