@@ -96,8 +96,7 @@ def create_perfect_foresight_forecast(
     forecast_hours = num_forecast_days * HOURS_PER_DAY
 
     # Validate input DataFrame has required columns
-    required_columns = ["DA-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve", 
-                        "Delta RU", "Delta RD"]
+    required_columns = ["DA-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve"]
     missing_cols = set(required_columns) - set(price_df.columns)
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
@@ -108,6 +107,12 @@ def create_perfect_foresight_forecast(
         print("WARNING: RT-LMP not found in spreadsheet. Using DA-LMP as proxy.")
     
     df = price_df.copy()
+    if "Delta RU" not in df.columns:
+        print("WARNING: Delta RU not found in spreadsheet. Filling with zeros.")
+        df["Delta RU"] = 0.0
+    if "Delta RD" not in df.columns:
+        print("WARNING: Delta RD not found in spreadsheet. Filling with zeros.")
+        df["Delta RD"] = 0.0
 
     def get_forecast(template: pd.DataFrame, col: str) -> pd.DataFrame:
         """

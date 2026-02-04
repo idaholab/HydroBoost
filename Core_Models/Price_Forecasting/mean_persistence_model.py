@@ -88,8 +88,7 @@ def create_mean_persistence_forecast(
         - Delta_RD.csv
     """
     # Validate input parameters
-    required_keys = ["DA-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve", 
-                     "Delta RU", "Delta RD"]
+    required_keys = ["DA-LMP", "Regulation Up", "Regulation Down", "Spinning Reserve"]
     missing_keys = set(required_keys) - set(perfect_foresight_forecast_dict.keys())
     if missing_keys:
         raise ValueError(f"Missing required keys in perfect_foresight_forecast_dict: {missing_keys}")
@@ -104,6 +103,16 @@ def create_mean_persistence_forecast(
     
     if num_mean_persistence_days < 1:
         raise ValueError(f"num_mean_persistence_days must be at least 1, got {num_mean_persistence_days}")
+
+    pf_dict = dict(perfect_foresight_forecast_dict)
+    if "Delta RU" not in pf_dict:
+        print("WARNING: Delta RU not found in perfect foresight dict. Filling with zeros.")
+        pf_dict["Delta RU"] = pf_dict["DA-LMP"].copy()
+        pf_dict["Delta RU"].loc[:, :] = 0.0
+    if "Delta RD" not in pf_dict:
+        print("WARNING: Delta RD not found in perfect foresight dict. Filling with zeros.")
+        pf_dict["Delta RD"] = pf_dict["DA-LMP"].copy()
+        pf_dict["Delta RD"].loc[:, :] = 0.0
 
     def get_forecast(df_tpl: pd.DataFrame) -> pd.DataFrame:
         """
@@ -136,17 +145,17 @@ def create_mean_persistence_forecast(
 
     # Build forecasts for each price type
     forecasts = {
-        "DA-LMP": get_forecast(perfect_foresight_forecast_dict["DA-LMP"].T.copy()),
-        "Regulation Up": get_forecast(perfect_foresight_forecast_dict["Regulation Up"].T.copy()),
-        "Regulation Down": get_forecast(perfect_foresight_forecast_dict["Regulation Down"].T.copy()),
-        "Spinning Reserve": get_forecast(perfect_foresight_forecast_dict["Spinning Reserve"].T.copy()),
-        "Delta RU": get_forecast(perfect_foresight_forecast_dict["Delta RU"].T.copy()),
-        "Delta RD": get_forecast(perfect_foresight_forecast_dict["Delta RD"].T.copy()),
+        "DA-LMP": get_forecast(pf_dict["DA-LMP"].T.copy()),
+        "Regulation Up": get_forecast(pf_dict["Regulation Up"].T.copy()),
+        "Regulation Down": get_forecast(pf_dict["Regulation Down"].T.copy()),
+        "Spinning Reserve": get_forecast(pf_dict["Spinning Reserve"].T.copy()),
+        "Delta RU": get_forecast(pf_dict["Delta RU"].T.copy()),
+        "Delta RD": get_forecast(pf_dict["Delta RD"].T.copy()),
     }
     
     # Add RT-LMP (use actual if available, otherwise use DA-LMP as proxy)
     if has_rt_lmp:
-        forecasts["RT-LMP"] = get_forecast(perfect_foresight_forecast_dict["RT-LMP"].T.copy())
+        forecasts["RT-LMP"] = get_forecast(pf_dict["RT-LMP"].T.copy())
     else:
         # Fallback: Use DA-LMP as proxy for RT-LMP (Model C requires this)
         forecasts["RT-LMP"] = forecasts["DA-LMP"].copy()

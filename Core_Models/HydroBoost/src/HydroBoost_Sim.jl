@@ -37,8 +37,8 @@ include("core/model_handler.jl")
 # Select the model structure by uncommenting the corresponding include line below
 
 # include("model_structure/HydroBoost_Model_A.jl")
-# include("model_structure/HydroBoost_Model_B.jl")
-include("model_structure/HydroBoost_Model_C.jl")
+include("model_structure/HydroBoost_Model_B.jl")
+# include("model_structure/HydroBoost_Model_C.jl")
 
 end
 
