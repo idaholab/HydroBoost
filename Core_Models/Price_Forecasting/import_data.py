@@ -4,6 +4,7 @@
 import os
 import shutil
 import pandas as pd
+import openpyxl
 
 # Make it runnable with the IDE "Run" button (works both as package and as script)
 try:
@@ -150,6 +151,9 @@ def copy_Excel(file_name):
 
     This is needed by the Julia optimization which requires additional
     information from the input Excel file.
+    
+    Also fixes Run_Flag values: converts string 'true'/'false' to boolean True/False
+    to ensure Julia can properly filter cases to run.
     """
     xlsx_path = os.path.join(INPUT_DIR, f"{file_name}.xlsx")
     if not os.path.isfile(xlsx_path):
@@ -157,7 +161,27 @@ def copy_Excel(file_name):
 
     out_dir = generate_path([file_name])
     dest_path = os.path.join(out_dir, f"{file_name}.xlsx")
+    
+    # Copy the file first
     shutil.copy2(xlsx_path, dest_path)
+    
+    # Open the copied file and fix Run_Flag values if they are strings
+    try:
+        wb = openpyxl.load_workbook(dest_path)
+        if 'Simulation Configuration' in wb.sheetnames:
+            ws = wb['Simulation Configuration']
+            # Check rows 3-6 (assuming header is in row 2)
+            for row in range(3, 7):
+                cell = ws.cell(row=row, column=2)  # Column B is the Run_Flag column
+                if cell.value == 'true':
+                    cell.value = True
+                elif cell.value == 'false':
+                    cell.value = False
+            wb.save(dest_path)
+            wb.close()
+    except Exception as e:
+        print(f"Warning: Could not fix Run_Flag booleans in {dest_path}: {e}")
+    
     print(f"→ Excel file copied to: {dest_path}")
 
 
