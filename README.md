@@ -10,6 +10,10 @@ HydroBoost is a joint Idaho National Lab (INL) and Argonne National Lab (ANL) de
 ## Initial Setup to run HydroBoost
 Currently, HydroBoost is ran using both Python and Julia. You must setup both environments to run the tool. If you do not have either installed you can find downloads for  Python here https://www.anaconda.com/download/success, and Julia can be found here https://julialang.org/downloads/.
 
+Recommended versions:
+* Python 3.11 (if you have issues on another version, try 3.11)
+* Julia 1.8.2 (this matches the HydroBoost Manifest)
+
 This will walk you through setting up the environment and running the tool. There are four steps:
 
 * Create an input spreadsheet for you project (examples provided)
@@ -23,7 +27,7 @@ You need to fill out an input spreadsheet with the characteristics of your syste
 
 
 ## Step 2: Generating Forecast Price Data
-First, you need to open the Generate_forecast_data.py file and change the file_name to the name of the input spreadsheet for your system.
+First, you need to open the Generate_forecast_price_data.py file and change the file_name to the name of the input spreadsheet for your system.
 
 It is recommended that you use a virtual environment but you can run using the global environment. To create a virtual environment and install the needed packages:
 ```
@@ -52,12 +56,25 @@ The forecast data will be generated and the results will be located in the Core_
 
 ## Step 3: Optimization Solver
 
-Now you will run the solver using the data you generated above. First, you need to install the needed packages and add the HydroBoost_Sim package. We will use the Julia REPL for this. In the terminal command line type the command julia and hit enter to start the REPL.
+Now you will run the solver using the data you generated above. First, make sure you are using Julia 1.8.2. If you have juliaup installed:
+
+```
+juliaup add 1.8.2
+julia +1.8.2 --project=Core_Models/HydroBoost
+```
+
+If you want Julia 1.8.2 to be your default:
+```
+juliaup default 1.8.2
+```
+
+We will use the Julia REPL for this. In the terminal command line type the command julia and hit enter to start the REPL.
 
 Now add the needed packages with the following lines:
 ```julia
 using Pkg
-Pkg.add(path=pwd(), subdir="Core_Models/HydroBoost")
+Pkg.activate("Core_Models/HydroBoost")
+Pkg.instantiate()
 ```
 
 ### Execute HydroBoost
@@ -65,14 +82,15 @@ Pkg.add(path=pwd(), subdir="Core_Models/HydroBoost")
 To run HydroBoost, you simply call the "execute_HydroBoost_model" function, which will execute the simulation process:
 
 ```julia
-using Pkg 
-using HydroBoost_Sim
+include("Core_Models/HydroBoost/src/HydroBoost_Sim.jl")
+using .HydroBoost_Sim
 HydroBoost_Sim.execute_HydroBoost_model(project_id)
-
 ```
 where project_id is the name of your input file.
 
 The results will be save in the Simulation_Results directory.
+
+Note: Make sure the correct model is uncommented in Core_Models/HydroBoost/src/HydroBoost_Sim.jl (A, B, or C). If you switch models, restart Julia so the new include loads.
 
 ## Step 4: Generating Figures
 This is not necessary but serves as a convenience to generate many interactive plots to view the results data. 
