@@ -4,9 +4,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import os
+from Core_Models.Price_Forecasting.helper_functions import parse_CLI_arguments
 
 # Select the project folder in the Simulation_Results directory
-project = "Project_1"
+project = parse_CLI_arguments()
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 

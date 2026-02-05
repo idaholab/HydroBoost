@@ -21,7 +21,7 @@ from Core_Models.Price_Forecasting.mean_persistence_model import create_mean_per
 from Core_Models.Price_Forecasting.additive_models import additive_model_no_regressors, additive_model_with_regressors
 from Core_Models.Price_Forecasting.autoregressive_NN_model import autoregressive_NN_no_regressors, autoregressive_NN_with_regressors
 from Core_Models.Price_Forecasting.random_forest_model import random_forest_no_regressors, random_forest_with_regressors
-from Core_Models.Price_Forecasting.generate_figures import plot_forecast_model_errors
+from Core_Models.Price_Forecasting.generate_figures import plot_forecast_model_errors, plot_forecast_model_errors_MAE
 
 
 # Parse command line arguments to get the input filename
@@ -75,7 +75,7 @@ res_profiles = read_RES_profiles(file_name)
 # The Julia optimization needs additional information from the input Excel file so we copy it into the dirctory
 copy_Excel(file_name)
 
-# Generate forecast errors figure
+# Generate forecast errors figure (heatmap)
 fig_errors = plot_forecast_model_errors(
     file_name, 
     perfect_foresight_forecast_dict, 
@@ -86,4 +86,18 @@ fig_errors = plot_forecast_model_errors(
     autoregressive_NN_with_regressors_forecast,
     random_forest_no_regressors_forecast,
     random_forest_with_regressors_forecast
+)
+
+# Generate MAE error plot by forecast hour
+fig_mae = plot_forecast_model_errors_MAE(
+    file_name,
+    perfect_foresight_forecast_dict,
+    mean_persistence_forecast_dict,
+    additive_no_regressors_forecast,
+    additive_with_regressors_forecast,
+    autoregressive_NN_no_regressors_forecast,
+    autoregressive_NN_with_regressors_forecast,
+    random_forest_no_regressors_forecast,
+    random_forest_with_regressors_forecast,
+    metric='MAE'
 )
