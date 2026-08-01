@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import os
+import sys
 from Core_Models.Price_Forecasting.helper_functions import parse_CLI_arguments
 
 # Select the project folder in the Simulation_Results directory
@@ -19,13 +20,49 @@ def repo_path(*parts: str) -> str:
 # Import and format the data
 ##############################################
 
-result_dir = repo_path("Simulation_Results", project)
+# Julia may write result CSVs to result_dir or to result_dir/<case_id>/ (e.g. "1")
+def _find_result_dir(result_dir: str, project: str) -> str:
+    """Return result_dir or first subdir that contains all three dispatch CSVs."""
+    if not os.path.isdir(result_dir):
+        return result_dir
+    base = result_dir
+    for candidate in [base] + [os.path.join(base, d) for d in sorted(os.listdir(base)) if os.path.isdir(os.path.join(base, d))]:
+        hydro = os.path.join(candidate, f"ALEAF_HydroBoost_{project}__hydro_dispatch.csv")
+        plant = os.path.join(candidate, f"ALEAF_HydroBoost_{project}__plant_dispatch.csv")
+        storage = os.path.join(candidate, f"ALEAF_HydroBoost_{project}__storage_dispatch.csv")
+        if os.path.isfile(hydro) and os.path.isfile(plant) and os.path.isfile(storage):
+            return candidate
+    return base
+
+result_dir = _find_result_dir(repo_path("Simulation_Results", project), project)
 figures_dir = os.path.join(result_dir, "Figures")
 os.makedirs(figures_dir, exist_ok=True)
 
-df_hydro = pd.read_csv(os.path.join(result_dir, f"ALEAF_HydroBoost_{project}__hydro_dispatch.csv"))
-df_plant = pd.read_csv(os.path.join(result_dir, f"ALEAF_HydroBoost_{project}__plant_dispatch.csv"))
-df_storage = pd.read_csv(os.path.join(result_dir, f"ALEAF_HydroBoost_{project}__storage_dispatch.csv"))
+hydro_file = os.path.join(result_dir, f"ALEAF_HydroBoost_{project}__hydro_dispatch.csv")
+plant_file = os.path.join(result_dir, f"ALEAF_HydroBoost_{project}__plant_dispatch.csv")
+storage_file = os.path.join(result_dir, f"ALEAF_HydroBoost_{project}__storage_dispatch.csv")
+required = [("hydro_dispatch", hydro_file), ("plant_dispatch", plant_file), ("storage_dispatch", storage_file)]
+missing = [name for name, p in required if not os.path.isfile(p)]
+if missing:
+    print(f"Result CSV(s) not found: {', '.join(missing)}. Skipping figure generation.")
+    print("Run the Julia optimization (Step 2) first to produce simulation results.")
+    sys.exit(0)
+
+df_hydro = pd.read_csv(hydro_file)
+df_plant = pd.read_csv(plant_file)
+df_storage = pd.read_csv(storage_file)
+
+# Require one row per hour (8760) so index assignment is valid
+EXPECTED_LEN = 8760
+if len(df_hydro) == 0 or len(df_plant) == 0 or len(df_storage) == 0:
+    print("One or more result CSVs have no data rows. Skipping figure generation.")
+    print("This can happen when the optimization had no feasible solution or no units of a given type.")
+    sys.exit(0)
+if len(df_hydro) != EXPECTED_LEN or len(df_plant) != EXPECTED_LEN or len(df_storage) != EXPECTED_LEN:
+    print(f"Result CSVs have unexpected length (expected {EXPECTED_LEN} rows per file).")
+    print(f"  hydro: {len(df_hydro)}, plant: {len(df_plant)}, storage: {len(df_storage)}")
+    print("Figure generation expects one row per hour (365*24). Skipping.")
+    sys.exit(0)
 
 dates = pd.date_range(start='2025-01-01', periods=8760, freq='h')
 
@@ -49,15 +86,17 @@ df_hydro = df_hydro.rename(columns={"u_H_jht": "Hydro Plant Commitment",
                                     "u_4_jht": "Water Discharge from Piecewise Block 4 (ft^3/s)",
                                     })
 
-df_plant = df_plant.rename(columns={'p_B_DT_ht': 'Battery Discharged (MW)', 
-                                    'p_B_CT_ht': 'Battery Charging (MW)', 
-                                    'p_GB_ht': 'Grid to Battery (MW)', 
-                                    'p_HT_ht': 'Total Hydropower (MW)', 
-                                    'p_HB_ht': 'Hydropower to Battery (MW)', 
+df_plant = df_plant.rename(columns={'p_B_DT_ht': 'Battery Discharged (MW)',
+                                    'p_B_CT_ht': 'Battery Charging (MW)',
+                                    'p_GB_ht': 'Grid to Battery (MW)',
+                                    'p_HT_ht': 'Total Hydropower (MW)',
+                                    'p_G_ht': 'Total Hydropower (MW)',  # Model B / A naming
+                                    'p_HB_ht': 'Hydropower to Battery (MW)',
                                     'p_HG_ht': 'Hydropower to Grid',
-                                    's_ht': 'Spillage (ft^3/s)', 
-                                    'u_ht': 'Total Water Discharge (ft^3/s)', 
-                                    'e_H_ht': 'Volume of Reservoir (Acre*feet)', 
+                                    'p_G_Gr_ht': 'Hydropower to Grid',  # Model B aggregate to grid
+                                    's_ht': 'Spillage (ft^3/s)',
+                                    'u_ht': 'Total Water Discharge (ft^3/s)',
+                                    'e_H_ht': 'Volume of Reservoir (Acre*feet)',
                                     'I_ht': 'Water Inflow to Reservoir (ft^3/s)',
                                     })
 
@@ -76,7 +115,14 @@ df_storage = df_storage.rename(columns={'u_B_iht': 'Binary Battery Charging Mode
                                         'r_SR_iht': 'Reserve Spinning Market Sell (MW)'
                                         })
 
-df = df_hydro.join(df_plant.join(df_storage.drop(columns=['unit_id', 'UnitGroup', 'Unit_Category', 'Unit_Type'])))
+# Plant + hydro CSVs can both expose the same column name (e.g. q_G_jht) with different semantics;
+# join requires unique names. Merge plant+storage first, then align names before joining hydro.
+_stor = df_storage.drop(columns=['unit_id', 'UnitGroup', 'Unit_Category', 'Unit_Type'])
+_inner = df_plant.join(_stor, rsuffix='_storage')
+_overlap = df_hydro.columns.intersection(_inner.columns)
+if len(_overlap) > 0:
+    _inner = _inner.rename(columns={c: f"{c}_plant" for c in _overlap})
+df = df_hydro.join(_inner)
 df.index.name = 'Datetime'
 
 # Create revenue columns based on results and price
@@ -110,8 +156,6 @@ colors = {
 # Line plot
 ###########################################
 
-print(df.columns)
-
 fig = px.line(df.drop(columns=["unit_id", "UnitGroup", "Unit_Category", "Unit_Type"]))
 fig.write_html(os.path.join(figures_dir, "All_data.html"))
 
@@ -123,7 +167,7 @@ fig.write_html(os.path.join(figures_dir, "All_data.html"))
 # Create a figure
 fig = go.Figure()
 
-monthly_data = df[revenue_columns].resample('M').sum()
+monthly_data = df[revenue_columns].resample('ME').sum()
 
 # Create month labels
 month_names = ['January', 'February', 'March', 'April', 'May', 'June', 
@@ -447,3 +491,5 @@ os.makedirs(figures_dir, exist_ok=True)
 
 fig.write_html(os.path.join(figures_dir, "Monthly_Revenue.html"))
 table_fig.write_html(os.path.join(figures_dir, "Monthly_Summary_Table.html"))
+
+print(f"Figures written under: {figures_dir}")
